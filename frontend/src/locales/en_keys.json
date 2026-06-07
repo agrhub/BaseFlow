@@ -1,0 +1,1614 @@
+[
+  {
+    "key": "Connections",
+    "value": "Connections"
+  },
+  {
+    "key": "Repository",
+    "value": "Repository"
+  },
+  {
+    "key": "Close",
+    "value": "Close"
+  },
+  {
+    "key": "Value",
+    "value": "Value"
+  },
+  {
+    "key": "Search",
+    "value": "Search"
+  },
+  {
+    "key": "field",
+    "value": "field"
+  },
+  {
+    "key": "Connection name",
+    "value": "Connection name"
+  },
+  {
+    "key": "Action",
+    "value": "Action"
+  },
+  {
+    "key": "Delete",
+    "value": "Delete"
+  },
+  {
+    "key": "Update",
+    "value": "Update"
+  },
+  {
+    "key": "Connect",
+    "value": "Connect"
+  },
+  {
+    "key": "Create",
+    "value": "Create"
+  },
+  {
+    "key": "Storage",
+    "value": "Storage"
+  },
+  {
+    "key": "Files",
+    "value": "Files"
+  },
+  {
+    "key": "Home",
+    "value": "Home"
+  },
+  {
+    "key": "connection",
+    "value": "connection"
+  },
+  {
+    "key": "repository",
+    "value": "repository"
+  },
+  {
+    "key": "Back",
+    "value": "Back"
+  },
+  {
+    "key": "Options",
+    "value": "Options"
+  },
+  {
+    "key": "Name",
+    "value": "Name"
+  },
+  {
+    "key": "Key",
+    "value": "Key"
+  },
+  {
+    "key": "Reset",
+    "value": "Reset"
+  },
+  {
+    "key": "Password",
+    "value": "Password"
+  },
+  {
+    "key": "Sign In",
+    "value": "Sign In"
+  },
+  {
+    "key": "Logout",
+    "value": "Logout"
+  },
+  {
+    "key": "Edit",
+    "value": "Edit"
+  },
+  {
+    "key": "Monitoring",
+    "value": "Monitoring"
+  },
+  {
+    "key": "Connection",
+    "value": "Connection"
+  },
+  {
+    "key": "file",
+    "value": "file"
+  },
+  {
+    "key": "Link",
+    "value": "Link"
+  },
+  {
+    "key": "Restore",
+    "value": "Restore"
+  },
+  {
+    "key": "Query",
+    "value": "Query"
+  },
+  {
+    "key": "Incorrect password",
+    "value": "Incorrect password"
+  },
+  {
+    "key": "Logged in successfully",
+    "value": "Logged in successfully"
+  },
+  {
+    "key": "Logged out successfully",
+    "value": "Logged out successfully"
+  },
+  {
+    "key": "Password is required",
+    "value": "Password is required"
+  },
+  {
+    "key": "Language changed successfully",
+    "value": "Language changed successfully"
+  },
+  {
+    "key": "Actions",
+    "value": "Actions"
+  },
+  {
+    "key": "Add Connection",
+    "value": "Add Connection"
+  },
+  {
+    "key": "Are you sure you want to delete this connection profile?",
+    "value": "Are you sure you want to delete this connection profile?"
+  },
+  {
+    "key": "Cancel",
+    "value": "Cancel"
+  },
+  {
+    "key": "Connection Dashboard",
+    "value": "Connection Dashboard"
+  },
+  {
+    "key": "Connection Name",
+    "value": "Connection Name"
+  },
+  {
+    "key": "Connection name and connection string are required",
+    "value": "Connection name and connection string are required"
+  },
+  {
+    "key": "Connection String",
+    "value": "Connection String"
+  },
+  {
+    "key": "Connection successfully added",
+    "value": "Connection successfully added"
+  },
+  {
+    "key": "Connection successfully deleted",
+    "value": "Connection successfully deleted"
+  },
+  {
+    "key": "Connection successfully updated",
+    "value": "Connection successfully updated"
+  },
+  {
+    "key": "Create your first repository connection profile to get started.",
+    "value": "Create your first repository connection profile to get started."
+  },
+  {
+    "key": "Edit Connection",
+    "value": "Edit Connection"
+  },
+  {
+    "key": "Error deleting connection",
+    "value": "Error deleting connection"
+  },
+  {
+    "key": "Error saving connection",
+    "value": "Error saving connection"
+  },
+  {
+    "key": "Find",
+    "value": "Find"
+  },
+  {
+    "key": "Manage your Git repository connection profiles.",
+    "value": "Manage your Git repository connection profiles."
+  },
+  {
+    "key": "Metrics",
+    "value": "Metrics"
+  },
+  {
+    "key": "Minimalist Git Repository Analyzer",
+    "value": "Minimalist Git Repository Analyzer"
+  },
+  {
+    "key": "Git Repository Analyzer",
+    "value": "Git Repository Analyzer"
+  },
+  {
+    "key": "Next-generation repository analysis integrated with Google Gemini SRE capability & Arize Phoenix OTel trace analytics.",
+    "value": "Next-generation repository analysis integrated with Google Gemini SRE capability & Arize Phoenix OTel trace analytics."
+  },
+  {
+    "key": "Logout failed",
+    "value": "Logout failed"
+  },
+  {
+    "key": "Git Repository Connections",
+    "value": "Git Repository Connections"
+  },
+  {
+    "key": "New Connection",
+    "value": "New Connection"
+  },
+  {
+    "key": "Refresh",
+    "value": "Refresh"
+  },
+  {
+    "key": "Save",
+    "value": "Save"
+  },
+  {
+    "key": "Warning",
+    "value": "Warning"
+  },
+  {
+    "key": "Light",
+    "value": "Light"
+  },
+  {
+    "key": "Dark",
+    "value": "Dark"
+  },
+  {
+    "key": "System",
+    "value": "System"
+  },
+  {
+    "key": "Theme changed successfully",
+    "value": "Theme changed successfully"
+  },
+  {
+    "key": "BaseFlow AI",
+    "value": "BaseFlow AI"
+  },
+  {
+    "key": "Gemini Active",
+    "value": "Gemini Active"
+  },
+  {
+    "key": "Close",
+    "value": "Close"
+  },
+  {
+    "key": "Voice recognition error.",
+    "value": "Voice recognition error."
+  },
+  {
+    "key": "Chat history cleared.",
+    "value": "Chat history cleared."
+  },
+  {
+    "key": "Refresh",
+    "value": "Refresh"
+  },
+  {
+    "key": "Trace",
+    "value": "Trace"
+  },
+  {
+    "key": "Input",
+    "value": "Input"
+  },
+  {
+    "key": "Text",
+    "value": "Text"
+  },
+  {
+    "key": "Status",
+    "value": "Status"
+  },
+  {
+    "key": "Analyze",
+    "value": "Analyze"
+  },
+  {
+    "key": "All",
+    "value": "All"
+  },
+  {
+    "key": "status",
+    "value": "status"
+  },
+  {
+    "key": "name",
+    "value": "name"
+  },
+  {
+    "key": "input",
+    "value": "input"
+  },
+  {
+    "key": "latency",
+    "value": "latency"
+  },
+  {
+    "key": "Info",
+    "value": "Info"
+  },
+  {
+    "key": "Data",
+    "value": "Data"
+  },
+  {
+    "key": "Run",
+    "value": "Run"
+  },
+  {
+    "key": "Retry",
+    "value": "Retry"
+  },
+  {
+    "key": "No message to retry.",
+    "value": "No message to retry."
+  },
+  {
+    "key": "files",
+    "value": "files"
+  },
+  {
+    "key": "Selected",
+    "value": "Selected"
+  },
+  {
+    "key": "Clear",
+    "value": "Clear"
+  },
+  {
+    "key": "Regenerate",
+    "value": "Regenerate"
+  },
+  {
+    "key": "Field",
+    "value": "Field"
+  },
+  {
+    "key": "Type",
+    "value": "Type"
+  },
+  {
+    "key": "Date",
+    "value": "Date"
+  },
+  {
+    "key": "Download",
+    "value": "Download"
+  },
+  {
+    "key": "AI Analysis",
+    "value": "AI Analysis"
+  },
+  {
+    "key": "Schema",
+    "value": "Schema"
+  },
+  {
+    "key": "Analysis",
+    "value": "Analysis"
+  },
+  {
+    "key": "action",
+    "value": "action"
+  },
+  {
+    "key": "Result",
+    "value": "Result"
+  },
+  {
+    "key": "Event",
+    "value": "Event"
+  },
+  {
+    "key": "Time",
+    "value": "Time"
+  },
+  {
+    "key": "Autonomous, Observability-First",
+    "value": "Autonomous, Observability-First"
+  },
+  {
+    "key": "Explore Features",
+    "value": "Explore Features"
+  },
+  {
+    "key": "Global Languages",
+    "value": "Global Languages"
+  },
+  {
+    "key": "Real-time OTel Tracing",
+    "value": "Real-time OTel Tracing"
+  },
+  {
+    "key": "INTELLIGENT OPERATION",
+    "value": "INTELLIGENT OPERATION"
+  },
+  {
+    "key": "Engineered for High-Performance Teams",
+    "value": "Engineered for High-Performance Teams"
+  },
+  {
+    "key": "VISUAL OBSERVABILITY",
+    "value": "VISUAL OBSERVABILITY"
+  },
+  {
+    "key": "High-Fidelity Telemetry Preview",
+    "value": "High-Fidelity Telemetry Preview"
+  },
+  {
+    "key": "AI Conversational Assistant",
+    "value": "AI Conversational Assistant"
+  },
+  {
+    "key": "Google Gemini SRE conversational interface assisting with complex operations and ECharts rendering.",
+    "value": "Google Gemini SRE conversational interface assisting with complex operations and ECharts rendering."
+  },
+  {
+    "key": "Observability Telemetry Dashboard",
+    "value": "Observability Telemetry Dashboard"
+  },
+  {
+    "key": "Real-time repository performance statistics, CPU/RAM levels, and active traces percentiles.",
+    "value": "Real-time repository performance statistics, CPU/RAM levels, and active traces percentiles."
+  },
+  {
+    "key": "DB-Guardian Resolution Flow",
+    "value": "DB-Guardian Resolution Flow"
+  },
+  {
+    "key": "Automated explains, explainQueryPlan execution stats, and latency improvement bar graphs.",
+    "value": "Automated explains, explainQueryPlan execution stats, and latency improvement bar graphs."
+  },
+  {
+    "key": "Semantic Schema Analyzer",
+    "value": "Semantic Schema Analyzer"
+  },
+  {
+    "key": "Deconstruct schema structure, field occurrence rates, nested objects, and arrays.",
+    "value": "Deconstruct schema structure, field occurrence rates, nested objects, and arrays."
+  },
+  {
+    "key": "All rights reserved.",
+    "value": "All rights reserved."
+  },
+  {
+    "key": "Language changed successfully",
+    "value": "Language changed successfully"
+  },
+  {
+    "key": "Launch Console",
+    "value": "Launch Console"
+  },
+  {
+    "key": "User Guide",
+    "value": "User Guide"
+  },
+  {
+    "key": "Core Capabilities",
+    "value": "Core Capabilities"
+  },
+  {
+    "key": "Core Administration",
+    "value": "Core Administration"
+  },
+  {
+    "key": "Premium AI SRE",
+    "value": "Premium AI SRE"
+  },
+  {
+    "key": "Manual",
+    "value": "Manual"
+  },
+  {
+    "key": "Chapters",
+    "value": "Chapters"
+  },
+  {
+    "key": "Chapter",
+    "value": "Chapter"
+  },
+  {
+    "key": "Operational Guide",
+    "value": "Operational Guide"
+  },
+  {
+    "key": "System Visual Snapshot",
+    "value": "System Visual Snapshot"
+  },
+  {
+    "key": "Back",
+    "value": "Back"
+  },
+  {
+    "key": "Connection Manager",
+    "value": "Connection Manager"
+  },
+  {
+    "key": "Codebase Explorer",
+    "value": "Codebase Explorer"
+  },
+  {
+    "key": "Codebase Dashboard",
+    "value": "Codebase Dashboard"
+  },
+  {
+    "key": "No codebases found",
+    "value": "No codebases found"
+  },
+  {
+    "key": "Manage and test Git repository connection profiles. Supports local folder paths and remote repository configurations.",
+    "value": "Manage and test Git repository connection profiles. Supports local folder paths and remote repository configurations."
+  },
+  {
+    "key": "Navigate to Repository Connection Dashboard.",
+    "value": "Navigate to Repository Connection Dashboard."
+  },
+  {
+    "key": "Click New Connection button to register local paths.",
+    "value": "Click New Connection button to register local paths."
+  },
+  {
+    "key": "Verify directory access and state before saving.",
+    "value": "Verify directory access and state before saving."
+  },
+  {
+    "key": "Modify or delete inactive repository connections safely.",
+    "value": "Modify or delete inactive repository connections safely."
+  },
+  {
+    "key": "Directory & Class Explorer",
+    "value": "Directory & Class Explorer"
+  },
+  {
+    "key": "Perform high-level project catalog audits. Browse folders and classes dynamically. Features a lightweight structure scanner that parses logical packages and source code units.",
+    "value": "Perform high-level project catalog audits. Browse folders and classes dynamically. Features a lightweight structure scanner that parses logical packages and source code units."
+  },
+  {
+    "key": "Select any active repository to open its Explorer.",
+    "value": "Select any active repository to open its Explorer."
+  },
+  {
+    "key": "Traverse directories and browse structural files.",
+    "value": "Traverse directories and browse structural files."
+  },
+  {
+    "key": "Inspect class counts and line distributions across components.",
+    "value": "Inspect class counts and line distributions across components."
+  },
+  {
+    "key": "Visualize directory trees and file metadata.",
+    "value": "Visualize directory trees and file metadata."
+  },
+  {
+    "key": "Class Inspector & Relations",
+    "value": "Class Inspector & Relations"
+  },
+  {
+    "key": "Inspect logical class details, field declarations, and method signatures. Analyze inheritance paths, class relationships, and internal dependency links in the code.",
+    "value": "Inspect logical class details, field declarations, and method signatures. Analyze inheritance paths, class relationships, and internal dependency links in the code."
+  },
+  {
+    "key": "Open a class details panel to view its variables and methods.",
+    "value": "Open a class details panel to view its variables and methods."
+  },
+  {
+    "key": "Trace parent classes and child implementations.",
+    "value": "Trace parent classes and child implementations."
+  },
+  {
+    "key": "Identify implicit relations between logical models.",
+    "value": "Identify implicit relations between logical models."
+  },
+  {
+    "key": "Review structural warnings and complexity scores.",
+    "value": "Review structural warnings and complexity scores."
+  },
+  {
+    "key": "Git Commit & Activity Logs",
+    "value": "Git Commit & Activity Logs"
+  },
+  {
+    "key": "Advanced repository activity monitor. View commit log timelines, author distributions, and file edit histories. Prevent technical debt by monitoring active repository states.",
+    "value": "Advanced repository activity monitor. View commit log timelines, author distributions, and file edit histories. Prevent technical debt by monitoring active repository states."
+  },
+  {
+    "key": "Open the Monitoring tab in the repository dashboard.",
+    "value": "Open the Monitoring tab in the repository dashboard."
+  },
+  {
+    "key": "Inspect commit timelines, author names, and timestamps.",
+    "value": "Inspect commit timelines, author names, and timestamps."
+  },
+  {
+    "key": "Track lines of code additions, deletions, and active changes.",
+    "value": "Track lines of code additions, deletions, and active changes."
+  },
+  {
+    "key": "Scan file modify events to detect potential hotspots.",
+    "value": "Scan file modify events to detect potential hotspots."
+  },
+  {
+    "key": "BaseFlow AI SRE Assistant",
+    "value": "BaseFlow AI SRE Assistant"
+  },
+  {
+    "key": "Premium AI SRE automation copilot. Chat naturally to analyze repository schemas, request code visualizations, generate documentation, or ask the SRE SRE-specific performance questions.",
+    "value": "Premium AI SRE automation copilot. Chat naturally to analyze repository schemas, request code visualizations, generate documentation, or ask the SRE SRE-specific performance questions."
+  },
+  {
+    "key": "Open the BaseFlow AI SRE chatbot sidebar on the right.",
+    "value": "Open the BaseFlow AI SRE chatbot sidebar on the right."
+  },
+  {
+    "key": "Ask the assistant to query classes, summarize code, or write scripts.",
+    "value": "Ask the assistant to query classes, summarize code, or write scripts."
+  },
+  {
+    "key": "Ask the assistant to render real-time interactive ECharts graphs.",
+    "value": "Ask the assistant to render real-time interactive ECharts graphs."
+  },
+  {
+    "key": "Trigger automated code health evaluations directly in chat.",
+    "value": "Trigger automated code health evaluations directly in chat."
+  },
+  {
+    "key": "Git Commits History",
+    "value": "Git Commits History"
+  },
+  {
+    "key": "Browse recent changes and codebase transactions of the project.",
+    "value": "Browse recent changes and codebase transactions of the project."
+  },
+  {
+    "key": "Filter commits by message or author...",
+    "value": "Filter commits by message or author..."
+  },
+  {
+    "key": "No commits found matching the search query.",
+    "value": "No commits found matching the search query."
+  },
+  {
+    "key": "Error loading commit history.",
+    "value": "Error loading commit history."
+  },
+  {
+    "key": "Optimize",
+    "value": "Optimize"
+  },
+  {
+    "key": "Delete Risk",
+    "value": "Delete Risk"
+  },
+  {
+    "key": "Generate Tests",
+    "value": "Generate Tests"
+  },
+  {
+    "key": "Optimize this module file",
+    "value": "Optimize this module file"
+  },
+  {
+    "key": "Optimize class",
+    "value": "Optimize class"
+  },
+  {
+    "key": "If I delete this module file, how is the system affected?",
+    "value": "If I delete this module file, how is the system affected?"
+  },
+  {
+    "key": "If I delete this class, how is the system affected?",
+    "value": "If I delete this class, how is the system affected?"
+  },
+  {
+    "key": "Write unit tests for this module file",
+    "value": "Write unit tests for this module file"
+  },
+  {
+    "key": "Write unit tests for this class",
+    "value": "Write unit tests for this class"
+  },
+  {
+    "key": "Hierarchy",
+    "value": "Hierarchy"
+  },
+  {
+    "key": "Properties",
+    "value": "Properties"
+  },
+  {
+    "key": "Methods",
+    "value": "Methods"
+  },
+  {
+    "key": "No properties declared.",
+    "value": "No properties declared."
+  },
+  {
+    "key": "No methods declared.",
+    "value": "No methods declared."
+  },
+  {
+    "key": "Source Code",
+    "value": "Source Code"
+  },
+  {
+    "key": "Copy code",
+    "value": "Copy code"
+  },
+  {
+    "key": "No details found.",
+    "value": "No details found."
+  },
+  {
+    "key": "Error loading class details.",
+    "value": "Error loading class details."
+  },
+  {
+    "key": "Source code copied to clipboard.",
+    "value": "Source code copied to clipboard."
+  },
+  {
+    "key": "Structure Diagram",
+    "value": "Structure Diagram"
+  },
+  {
+    "key": "Displays files, classes, and inheritance/dependency links within the directory.",
+    "value": "Displays files, classes, and inheritance/dependency links within the directory."
+  },
+  {
+    "key": "Empty Folder",
+    "value": "Empty Folder"
+  },
+  {
+    "key": "No classes or files are declared directly in folder {folder}.",
+    "value": "No classes or files are declared directly in folder {folder}."
+  },
+  {
+    "key": "Synchronizing diagram...",
+    "value": "Synchronizing diagram..."
+  },
+  {
+    "key": "The system is loading classes data in the repository.",
+    "value": "The system is loading classes data in the repository."
+  },
+  {
+    "key": "Error loading mindmap graph data.",
+    "value": "Error loading mindmap graph data."
+  },
+  {
+    "key": "No Remote DevOps Provider Detected",
+    "value": "No Remote DevOps Provider Detected"
+  },
+  {
+    "key": "This repository connection does not point to a github.com or gitlab.com remote URL. DevOps features are available for hosted repositories.",
+    "value": "This repository connection does not point to a github.com or gitlab.com remote URL. DevOps features are available for hosted repositories."
+  },
+  {
+    "key": "Configure",
+    "value": "Configure"
+  },
+  {
+    "key": "AI Credentials",
+    "value": "AI Credentials"
+  },
+  {
+    "key": "Configure your Personal Access Tokens to enable automated AI pull/merge request reviews, issue triage, and onboarding workflows using Google Gemini and Git remote MCP tools.",
+    "value": "Configure your Personal Access Tokens to enable automated AI pull/merge request reviews, issue triage, and onboarding workflows using Google Gemini and Git remote MCP tools."
+  },
+  {
+    "key": "GitLab Personal Access Token",
+    "value": "GitLab Personal Access Token"
+  },
+  {
+    "key": "Requires api permissions to fetch issues/MRs and post review comments.",
+    "value": "Requires api permissions to fetch issues/MRs and post review comments."
+  },
+  {
+    "key": "GitHub Personal Access Token",
+    "value": "GitHub Personal Access Token"
+  },
+  {
+    "key": "Requires repo scope to fetch issues/PRs and publish reviews.",
+    "value": "Requires repo scope to fetch issues/PRs and publish reviews."
+  },
+  {
+    "key": "Save Credentials",
+    "value": "Save Credentials"
+  },
+  {
+    "key": "Codebase Developer Onboarding",
+    "value": "Codebase Developer Onboarding"
+  },
+  {
+    "key": "Generate a comprehensive, custom-tailored onboarding guide for new developers based on the project's parsed class tree, dependencies, and readme info.",
+    "value": "Generate a comprehensive, custom-tailored onboarding guide for new developers based on the project's parsed class tree, dependencies, and readme info."
+  },
+  {
+    "key": "Generate Onboarding Guide",
+    "value": "Generate Onboarding Guide"
+  },
+  {
+    "key": "Open Issues",
+    "value": "Open Issues"
+  },
+  {
+    "key": "AI Triage & Resolve",
+    "value": "AI Triage & Resolve"
+  },
+  {
+    "key": "No open issues found in this repository.",
+    "value": "No open issues found in this repository."
+  },
+  {
+    "key": "AI Code Review",
+    "value": "AI Code Review"
+  },
+  {
+    "key": "No open pull requests found in this repository.",
+    "value": "No open pull requests found in this repository."
+  },
+  {
+    "key": "No open merge requests found in this repository.",
+    "value": "No open merge requests found in this repository."
+  },
+  {
+    "key": "Workflow Runs",
+    "value": "Workflow Runs"
+  },
+  {
+    "key": "Pipelines",
+    "value": "Pipelines"
+  },
+  {
+    "key": "Analyze Blocker",
+    "value": "Analyze Blocker"
+  },
+  {
+    "key": "Branch",
+    "value": "Branch"
+  },
+  {
+    "key": "Updated",
+    "value": "Updated"
+  },
+  {
+    "key": "No activity runs found for this project.",
+    "value": "No activity runs found for this project."
+  },
+  {
+    "key": "Update API Credentials",
+    "value": "Update API Credentials"
+  },
+  {
+    "key": "Loading DevOps repository configuration...",
+    "value": "Loading DevOps repository configuration..."
+  },
+  {
+    "key": "GitLab Personal Access Token is required.",
+    "value": "GitLab Personal Access Token is required."
+  },
+  {
+    "key": "GitHub Personal Access Token is required.",
+    "value": "GitHub Personal Access Token is required."
+  },
+  {
+    "key": "DevOps credentials saved successfully.",
+    "value": "DevOps credentials saved successfully."
+  },
+  {
+    "key": "Failed to save credentials.",
+    "value": "Failed to save credentials."
+  },
+  {
+    "key": "Generate",
+    "value": "Generate"
+  },
+  {
+    "key": "Stars",
+    "value": "Stars"
+  },
+  {
+    "key": "Forks",
+    "value": "Forks"
+  },
+  {
+    "key": "Watchers",
+    "value": "Watchers"
+  },
+  {
+    "key": "No supported source files found.",
+    "value": "No supported source files found."
+  },
+  {
+    "key": "Path",
+    "value": "Path"
+  },
+  {
+    "key": "Name",
+    "value": "Name"
+  },
+  {
+    "key": "URL",
+    "value": "URL"
+  },
+  {
+    "key": "Desc",
+    "value": "Desc"
+  },
+  {
+    "key": "Author",
+    "value": "Author"
+  },
+  {
+    "key": "License",
+    "value": "License"
+  },
+  {
+    "key": "Status",
+    "value": "Status"
+  },
+  {
+    "key": "Analysed",
+    "value": "Analysed"
+  },
+  {
+    "key": "Git Commit Activity (Last 14 Days)",
+    "value": "Git Commit Activity (Last 14 Days)"
+  },
+  {
+    "key": "commits",
+    "value": "commits"
+  },
+  {
+    "key": "Mindmap",
+    "value": "Mindmap"
+  },
+  {
+    "key": "Repository Mindmap",
+    "value": "Repository Mindmap"
+  },
+  {
+    "key": "Visual representation of the repository folder hierarchy.",
+    "value": "Visual representation of the repository folder hierarchy."
+  },
+  {
+    "key": "Show Full Graph",
+    "value": "Show Full Graph"
+  },
+  {
+    "key": "Focus Node & Neighbors",
+    "value": "Focus Node & Neighbors"
+  },
+  {
+    "key": "Building directory structure tree...",
+    "value": "Building directory structure tree..."
+  },
+  {
+    "key": "Component Inspector",
+    "value": "Component Inspector"
+  },
+  {
+    "key": "Clear",
+    "value": "Clear"
+  },
+  {
+    "key": "File",
+    "value": "File"
+  },
+  {
+    "key": "Base Class",
+    "value": "Base Class"
+  },
+  {
+    "key": "Implements",
+    "value": "Implements"
+  },
+  {
+    "key": "🤖 AI Structural Analysis",
+    "value": "🤖 AI Structural Analysis"
+  },
+  {
+    "key": "Running Gemini analysis...",
+    "value": "Running Gemini analysis..."
+  },
+  {
+    "key": "No structural analysis computed.",
+    "value": "No structural analysis computed."
+  },
+  {
+    "key": "Analysis",
+    "value": "Analysis"
+  },
+  {
+    "key": "Analyzing README using AI...",
+    "value": "Analyzing README using AI..."
+  },
+  {
+    "key": "🤖 AI Assistant - Gemini Project Overview",
+    "value": "🤖 AI Assistant - Gemini Project Overview"
+  },
+  {
+    "key": "Gemini 2.5 Active",
+    "value": "Gemini 2.5 Active"
+  },
+  {
+    "key": "Architecture",
+    "value": "Architecture"
+  },
+  {
+    "key": "Tech Stack",
+    "value": "Tech Stack"
+  },
+  {
+    "key": "Key Features",
+    "value": "Key Features"
+  },
+  {
+    "key": "Complexity Score",
+    "value": "Complexity Score"
+  },
+  {
+    "key": "Module Distribution",
+    "value": "Module Distribution"
+  },
+  {
+    "key": "No README analysis data available from AI.",
+    "value": "No README analysis data available from AI."
+  },
+  {
+    "key": "History",
+    "value": "History"
+  },
+  {
+    "key": "Git Commit History",
+    "value": "Git Commit History"
+  },
+  {
+    "key": "Browse recent commits in the repository.",
+    "value": "Browse recent commits in the repository."
+  },
+  {
+    "key": "Filter commits...",
+    "value": "Filter commits..."
+  },
+  {
+    "key": "No matching commits found or the project has no Git history.",
+    "value": "No matching commits found or the project has no Git history."
+  },
+  {
+    "key": "DevOps",
+    "value": "DevOps"
+  },
+  {
+    "key": "System Architecture & Components Flow",
+    "value": "System Architecture & Components Flow"
+  },
+  {
+    "key": "AI-generated architecture diagram and component relation flows parsed from codebase AST metadata.",
+    "value": "AI-generated architecture diagram and component relation flows parsed from codebase AST metadata."
+  },
+  {
+    "key": "🔄 Regenerate with Gemini",
+    "value": "🔄 Regenerate with Gemini"
+  },
+  {
+    "key": "Documents",
+    "value": "Documents"
+  },
+  {
+    "key": "No Markdown documents found in the codebase.",
+    "value": "No Markdown documents found in the codebase."
+  },
+  {
+    "key": "Select a document",
+    "value": "Select a document"
+  },
+  {
+    "key": "Select a markdown document from the list to display contents and activate AI analysis.",
+    "value": "Select a markdown document from the list to display contents and activate AI analysis."
+  },
+  {
+    "key": "🤖 AI Document Assistant",
+    "value": "🤖 AI Document Assistant"
+  },
+  {
+    "key": "⚡ Generate AI Agent Playbook",
+    "value": "⚡ Generate AI Agent Playbook"
+  },
+  {
+    "key": "🔍 Verify via MCP",
+    "value": "🔍 Verify via MCP"
+  },
+  {
+    "key": "📋 Summary & Core Insights",
+    "value": "📋 Summary & Core Insights"
+  },
+  {
+    "key": "Summary",
+    "value": "Summary"
+  },
+  {
+    "key": "No summary generated yet.",
+    "value": "No summary generated yet."
+  },
+  {
+    "key": "Key Insights",
+    "value": "Key Insights"
+  },
+  {
+    "key": "No insights computed.",
+    "value": "No insights computed."
+  },
+  {
+    "key": "💡 Suggested Improvements",
+    "value": "💡 Suggested Improvements"
+  },
+  {
+    "key": "No suggestions computed.",
+    "value": "No suggestions computed."
+  },
+  {
+    "key": "💬 Q&A Chat About This Doc",
+    "value": "💬 Q&A Chat About This Doc"
+  },
+  {
+    "key": "You",
+    "value": "You"
+  },
+  {
+    "key": "Gemini",
+    "value": "Gemini"
+  },
+  {
+    "key": "Ask any question about this document.",
+    "value": "Ask any question about this document."
+  },
+  {
+    "key": "Type question & enter...",
+    "value": "Type question & enter..."
+  },
+  {
+    "key": "Send",
+    "value": "Send"
+  },
+  {
+    "key": "Failed to load repository statistics.",
+    "value": "Failed to load repository statistics."
+  },
+  {
+    "key": "Failed to load AI analysis for this component.",
+    "value": "Failed to load AI analysis for this component."
+  },
+  {
+    "key": "Architecture diagrams regenerated successfully!",
+    "value": "Architecture diagrams regenerated successfully!"
+  },
+  {
+    "key": "Failed to regenerate architecture diagrams.",
+    "value": "Failed to regenerate architecture diagrams."
+  },
+  {
+    "key": "Failed to load document content.",
+    "value": "Failed to load document content."
+  },
+  {
+    "key": "AI agent playbook created at: {path}",
+    "value": "AI agent playbook created at: {path}"
+  },
+  {
+    "key": "Failed to generate agent playbook.",
+    "value": "Failed to generate agent playbook."
+  },
+  {
+    "key": "No codebase found",
+    "value": "No codebase found"
+  },
+  {
+    "key": "Ask AI Architect",
+    "value": "Ask AI Architect"
+  },
+  {
+    "key": "BaseFlow Assistant",
+    "value": "BaseFlow Assistant"
+  },
+  {
+    "key": "Clear Chat History",
+    "value": "Clear Chat History"
+  },
+  {
+    "key": "Welcome to BaseFlow Assistant",
+    "value": "Welcome to BaseFlow Assistant"
+  },
+  {
+    "key": "I can help you analyze codebases, inspect class structures, suggest refactoring, write tests, or interact with GitLab workflows.",
+    "value": "I can help you analyze codebases, inspect class structures, suggest refactoring, write tests, or interact with GitLab workflows."
+  },
+  {
+    "key": "Optimize {item}",
+    "value": "Optimize {item}"
+  },
+  {
+    "key": "Write unit tests for {item}",
+    "value": "Write unit tests for {item}"
+  },
+  {
+    "key": "Analyze refactor impact for {item}",
+    "value": "Analyze refactor impact for {item}"
+  },
+  {
+    "key": "Show {item} on mindmap",
+    "value": "Show {item} on mindmap"
+  },
+  {
+    "key": "Speak aloud",
+    "value": "Speak aloud"
+  },
+  {
+    "key": "BaseFlow is thinking...",
+    "value": "BaseFlow is thinking..."
+  },
+  {
+    "key": "Ask about code, request refactoring, navigate tabs...",
+    "value": "Ask about code, request refactoring, navigate tabs..."
+  },
+  {
+    "key": "Voice input",
+    "value": "Voice input"
+  },
+  {
+    "key": "Agent did not respond.",
+    "value": "Agent did not respond."
+  },
+  {
+    "key": "Failed to get a response from the AI.",
+    "value": "Failed to get a response from the AI."
+  },
+  {
+    "key": "Failed to clear session.",
+    "value": "Failed to clear session."
+  },
+  {
+    "key": "Inspecting codebase class: {class}",
+    "value": "Inspecting codebase class: {class}"
+  },
+  {
+    "key": "Rendering diagram...",
+    "value": "Rendering diagram..."
+  },
+  {
+    "key": "Parsing chart...",
+    "value": "Parsing chart..."
+  },
+  {
+    "key": "Mermaid Render Error:",
+    "value": "Mermaid Render Error:"
+  },
+  {
+    "key": "Invalid diagram syntax.",
+    "value": "Invalid diagram syntax."
+  },
+  {
+    "key": "Data Analysis",
+    "value": "Data Analysis"
+  },
+  {
+    "key": "No data points provided for chart.",
+    "value": "No data points provided for chart."
+  },
+  {
+    "key": "AI Software Architect",
+    "value": "AI Software Architect"
+  },
+  {
+    "key": "AI Design Assistant",
+    "value": "AI Design Assistant"
+  },
+  {
+    "key": "I can help you understand relations between classes, suggest code optimization, analyze impact of deleting classes, or write automated unit tests.",
+    "value": "I can help you understand relations between classes, suggest code optimization, analyze impact of deleting classes, or write automated unit tests."
+  },
+  {
+    "key": "💡 Optimize selected class",
+    "value": "💡 Optimize selected class"
+  },
+  {
+    "key": "🧪 Write unit tests",
+    "value": "🧪 Write unit tests"
+  },
+  {
+    "key": "⚠️ Impact analysis of deleting class",
+    "value": "⚠️ Impact analysis of deleting class"
+  },
+  {
+    "key": "Architect Agent",
+    "value": "Architect Agent"
+  },
+  {
+    "key": "Ask agent about class, optimization, test...",
+    "value": "Ask agent about class, optimization, test..."
+  },
+  {
+    "key": "Enter to send, Shift+Enter for new line",
+    "value": "Enter to send, Shift+Enter for new line"
+  },
+  {
+    "key": "Please configure Gemini API Key in the settings first.",
+    "value": "Please configure Gemini API Key in the settings first."
+  },
+  {
+    "key": "Agent did not return a response.",
+    "value": "Agent did not return a response."
+  },
+  {
+    "key": "Failed to connect to backend server.",
+    "value": "Failed to connect to backend server."
+  },
+  {
+    "key": "Class",
+    "value": "Class"
+  },
+  {
+    "key": "Inheritance & Interfaces",
+    "value": "Inheritance & Interfaces"
+  },
+  {
+    "key": "Copy",
+    "value": "Copy"
+  },
+  {
+    "key": "Select a class on the mindmap to view its structure, properties, methods and source code.",
+    "value": "Select a class on the mindmap to view its structure, properties, methods and source code."
+  },
+  {
+    "key": "e.g. MyProject",
+    "value": "e.g. MyProject"
+  },
+  {
+    "key": "Path / Clone URL",
+    "value": "Path / Clone URL"
+  },
+  {
+    "key": "e.g. C:/Projects/MyProject  or  https://github.com/user/repo.git",
+    "value": "e.g. C:/Projects/MyProject  or  https://github.com/user/repo.git"
+  },
+  {
+    "key": "Repository Type",
+    "value": "Repository Type"
+  },
+  {
+    "key": "Local Folder",
+    "value": "Local Folder"
+  },
+  {
+    "key": "Git Remote URL",
+    "value": "Git Remote URL"
+  },
+  {
+    "key": "Default Branch",
+    "value": "Default Branch"
+  },
+  {
+    "key": "e.g. main",
+    "value": "e.g. main"
+  },
+  {
+    "key": "Zoom In",
+    "value": "Zoom In"
+  },
+  {
+    "key": "Zoom Out",
+    "value": "Zoom Out"
+  },
+  {
+    "key": "Center",
+    "value": "Center"
+  },
+  {
+    "key": "Fullscreen",
+    "value": "Fullscreen"
+  },
+  {
+    "key": "Extends",
+    "value": "Extends"
+  },
+  {
+    "key": "Uses",
+    "value": "Uses"
+  },
+  {
+    "key": "No properties or methods declared",
+    "value": "No properties or methods declared"
+  },
+  {
+    "key": "UML Entity-Relationship & Class Diagram",
+    "value": "UML Entity-Relationship & Class Diagram"
+  },
+  {
+    "key": "Inherited / Implements",
+    "value": "Inherited / Implements"
+  },
+  {
+    "key": "No base classes or interfaces",
+    "value": "No base classes or interfaces"
+  },
+  {
+    "key": "Interface",
+    "value": "Interface"
+  },
+  {
+    "key": "No properties",
+    "value": "No properties"
+  },
+  {
+    "key": "No methods",
+    "value": "No methods"
+  },
+  {
+    "key": "Selected Component",
+    "value": "Selected Component"
+  },
+  {
+    "key": "Used By / Dependencies",
+    "value": "Used By / Dependencies"
+  },
+  {
+    "key": "No related dependent classes",
+    "value": "No related dependent classes"
+  },
+  {
+    "key": "Dependency",
+    "value": "Dependency"
+  },
+  {
+    "key": "System Configuration",
+    "value": "System Configuration"
+  },
+  {
+    "key": "Provides the API keys required to run the AI model and sync the corresponding MCP tools.",
+    "value": "Provides the API keys required to run the AI model and sync the corresponding MCP tools."
+  },
+  {
+    "key": "Gemini API Key",
+    "value": "Gemini API Key"
+  },
+  {
+    "key": "Enter Gemini API Key from Google AI Studio",
+    "value": "Enter Gemini API Key from Google AI Studio"
+  },
+  {
+    "key": "GitHub Personal Access Token (Optional)",
+    "value": "GitHub Personal Access Token (Optional)"
+  },
+  {
+    "key": "Used for GitHub MCP to browse issues, create PRs...",
+    "value": "Used for GitHub MCP to browse issues, create PRs..."
+  },
+  {
+    "key": "GitLab Personal Access Token (Optional)",
+    "value": "GitLab Personal Access Token (Optional)"
+  },
+  {
+    "key": "Used for GitLab MCP to sync GitLab source code...",
+    "value": "Used for GitLab MCP to sync GitLab source code..."
+  },
+  {
+    "key": "Save Configuration",
+    "value": "Save Configuration"
+  },
+  {
+    "key": "Please enter Gemini API Key to launch the Agent.",
+    "value": "Please enter Gemini API Key to launch the Agent."
+  },
+  {
+    "key": "Configuration saved successfully.",
+    "value": "Configuration saved successfully."
+  },
+  {
+    "key": "No Connections Configured",
+    "value": "No Connections Configured"
+  },
+  {
+    "key": "Pull Requests",
+    "value": "Pull Requests"
+  },
+  {
+    "key": "Merge Requests",
+    "value": "Merge Requests"
+  },
+  {
+    "key": "items",
+    "value": "items"
+  },
+  {
+    "key": "Total Classes",
+    "value": "Total Classes"
+  },
+  {
+    "key": "Relationships",
+    "value": "Relationships"
+  },
+  {
+    "key": "Graph Nodes",
+    "value": "Graph Nodes"
+  },
+  {
+    "key": "Languages Breakdown",
+    "value": "Languages Breakdown"
+  },
+  {
+    "key": "Repository Info",
+    "value": "Repository Info"
+  },
+  {
+    "key": "How to Run",
+    "value": "How to Run"
+  },
+  {
+    "key": "Score & Structural Breakdown",
+    "value": "Score & Structural Breakdown"
+  },
+  {
+    "key": "High-Level System Architecture",
+    "value": "High-Level System Architecture"
+  },
+  {
+    "key": "Class & Component Interaction Flow",
+    "value": "Class & Component Interaction Flow"
+  },
+  {
+    "key": "Codebase Markdown Docs",
+    "value": "Codebase Markdown Docs"
+  },
+  {
+    "key": "Class / File",
+    "value": "Class / File"
+  },
+  {
+    "key": "Optimize code structure",
+    "value": "Optimize code structure"
+  },
+  {
+    "key": "Write unit tests",
+    "value": "Write unit tests"
+  },
+  {
+    "key": "Explain roles & dependencies",
+    "value": "Explain roles & dependencies"
+  },
+  {
+    "key": "Failed to load architecture diagrams.",
+    "value": "Failed to load architecture diagrams."
+  },
+  {
+    "key": "Voice recognition is not supported in this browser.",
+    "value": "Voice recognition is not supported in this browser."
+  },
+  {
+    "key": "Listening... Speak now.",
+    "value": "Listening... Speak now."
+  },
+  {
+    "key": "Voice transcribed!",
+    "value": "Voice transcribed!"
+  },
+  {
+    "key": "Chart Render Error:",
+    "value": "Chart Render Error:"
+  },
+  {
+    "key": "Invalid JSON config.",
+    "value": "Invalid JSON config."
+  }
+]
