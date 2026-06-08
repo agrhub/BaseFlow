@@ -38,6 +38,44 @@ BaseFlow is an advanced, interactive codebase visualization and AI-assisted soft
 
 ---
 
+## 📸 Screenshots & Visual Tour
+
+### 📊 Repository Dashboard & Overview
+*Compute live commit metrics, total class counts, language percentages, and Git activity trends.*
+![Repository Dashboard & Overview](docs/images/01_dashboard_generate.png)
+
+### 🗺️ G6 Interactive Codebase Mindmap
+*Traverse package directory trees visually. Auto-focus node cameras and switch between Mindmap and Neural Map layouts.*
+![G6 Interactive Codebase Mindmap](docs/images/02_mindmap_full.png)
+
+### 🔍 Class Inspector & UML ERD Drawer
+*Single-click class nodes to inspect fields/methods or double-click to draw UML Entity-Relationship dialogues.*
+![Class Inspector & UML ERDs](docs/images/03_mindmap_inspector.png)
+![UML Entity-Relationship dialogues](docs/images/04_mindmap_erd_dialog.png)
+
+### 🛡️ AI DevOps Workspace & Security Audits
+*Compute DevOps health indexes, generate onboarding guides, and run codebase security audits (vulnerability warning nodes highlighted in RED).*
+![AI DevOps Workspace](docs/images/07_devops_tab.png)
+![Security Audit Mindmap highlights](docs/images/08_mindmap_security_highlight.png)
+
+### 🏗️ System Architecture Mermaid Diagrams
+*Deconstruct imports and module interaction maps automatically into zoomable, fullscreen Mermaid flowcharts.*
+![System Architecture Mermaid diagrams](docs/images/09_architecture_tab.png)
+
+### 📄 AI Document Playbooks & Q&A
+*Read repository Markdown files, prompt agent Q&A chat drawers, and prepare skill playbooks for Copilot/Duo.*
+![AI Document Playbooks & Q&A](docs/images/10_documents_readme.png)
+
+### 💻 Sidebar Explorer & Selection Chat
+*Expand folder trees in the sidebar, view source code with line-highlighting, and select text to invoke SRE chat bubble.*
+![Sidebar Explorer & Selection Chat](docs/images/10b_OpenCut_class_inspector_code.png)
+
+### 🤖 Conversational Chatbot Assistant
+*Slide open the Gemini assistant sidebar to optimize classes, write test suites, or ask freeform queries.*
+![Conversational chatbot assistant](docs/images/12b_AntMediaServer_custom_chat.png)
+
+---
+
 ## 🏗️ Architecture & Technology Stack
 
 BaseFlow runs as a unified containerized service hosting both backend API services and frontend assets.
@@ -72,6 +110,9 @@ graph TD
     Express -- Webhooks / MCP --> GitHub
     Express -- Serve Static Assets --> Client
 ```
+
+### 🔮 3D Visual Architecture Flow
+![BaseFlow 3D System Architecture](docs/images/system_architecture.png)
 
 ### Components
 1. **Backend** ([backend/](backend/)):
@@ -180,11 +221,15 @@ The deployment script executes a remote container build via Cloud Build utilizin
 > [!IMPORTANT]
 > Once deployed, configure the **Environment Variables** in the Google Cloud Run panel for `GOOGLE_API_KEY`, `PASSWORD`, and `AGENT_MODEL` to enable the AI Architect features.
 
-### Contact me
-Developer: Minh Truong
-GitHub: @camminh512
-Supporter: Tan Do
-GitHub: @dmtan90
+## 👤 Developer
+
+- **Name:** Minh Truong
+- **GitHub:** [@camtruong512](https://github.com/camtruong512)
+
+## 👤 Supporter
+
+- **Name:** Tan Do
+- **GitHub:** [@dmtan90](https://github.com/dmtan90)
 ---
 
 ## 📄 License

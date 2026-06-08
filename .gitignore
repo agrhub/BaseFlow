@@ -4,23 +4,10 @@
 .nuxt
 .nitro
 .cache
-_client
-__client
-_server
-_pages
-_video-editor
-ams
-aistudio
-aistudio_source
-aistudio-data
 server/logs
 server/node_modules
 server/server.log
 server/tmp
-flow2api
-flow2api_tupdater
-Flow2API-Token-Updater
-vroid-scripts
 # Node dependencies
 node_modules
 backup
@@ -42,18 +29,6 @@ logs
 !.env.example
 pnpm-lock.yaml
 .vscode/settings.json
-server/build_log_utf8.txt
-server/build_log_v2.txt
-server/build_log.txt
-server/cert1.pem
-server/chain1.pem
-server/eval_log.txt
-server/fullchain1.pem
-server/migrate_logger.mjs
-server/migrate_systemLogger.mjs
-server/tsc_output.txt
-server/tsc_output_fixed.txt
-server/tsc_output_utf8.txt
 
 _run.cmd
 tests

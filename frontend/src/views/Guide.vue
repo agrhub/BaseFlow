@@ -58,58 +58,91 @@ const activeChapter = ref(0);
 
 const chapters = computed(() => [
   {
-    title: store.t('Connection Manager'),
-    desc: store.t('Manage and test Git repository connection profiles. Supports local folder paths and remote repository configurations.'),
-    img: '/docs/images/connections.png',
+    title: store.t('Repository Connections & Overview'),
+    desc: store.t('Configure, test, and sync Git repository profiles. Support both local workspace folders and remote repositories (GitHub/GitLab). View high-level metrics, language breakdowns, and commit activity trends.'),
+    img: '/docs/images/01_dashboard_generate.png',
     steps: [
-      store.t('Navigate to Repository Connection Dashboard.'),
-      store.t('Click New Connection button to register local paths.'),
-      store.t('Verify directory access and state before saving.'),
-      store.t('Modify or delete inactive repository connections safely.')
+      store.t('Connect your local or remote codebase in the manager.'),
+      store.t('Browse dashboard summary statistics (total classes, relationships).'),
+      store.t('Review Git commit activity charts showing history over time.'),
+      store.t('Toggle between Light and Dark visual modes.')
     ]
   },
   {
-    title: store.t('Directory & Class Explorer'),
-    desc: store.t('Perform high-level project catalog audits. Browse folders and classes dynamically. Features a lightweight structure scanner that parses logical packages and source code units.'),
-    img: '/docs/images/db_explorer.png',
+    title: store.t('Interactive Codebase Mindmaps'),
+    desc: store.t('Visualize package directories and logical class hierarchies inside an interactive G6 canvas. Switch layouts dynamically and focus nodes instantly.'),
+    img: '/docs/images/02_mindmap_full.png',
     steps: [
-      store.t('Select any active repository to open its Explorer.'),
-      store.t('Traverse directories and browse structural files.'),
-      store.t('Inspect class counts and line distributions across components.'),
-      store.t('Visualize directory trees and file metadata.')
+      store.t('Navigate to the Maps tab in your repository dashboard.'),
+      store.t('Use autocomplete search bar to locate specific classes.'),
+      store.t('Toggle camera centering and reset zoom levels.'),
+      store.t('Switch between Mindmap tree layout and Force-Directed Neural Map.')
     ]
   },
   {
-    title: store.t('Class Inspector & Relations'),
-    desc: store.t('Inspect logical class details, field declarations, and method signatures. Analyze inheritance paths, class relationships, and internal dependency links in the code.'),
-    img: '/docs/images/documents.png',
+    title: store.t('Class Inspector & UML ERDs'),
+    desc: store.t('Drill down into logical class details, property visibility flags, field declarations, and method signatures. Launch class Entity-Relationship diagrams to map data flow.'),
+    img: '/docs/images/03_mindmap_inspector.png',
     steps: [
-      store.t('Open a class details panel to view its variables and methods.'),
-      store.t('Trace parent classes and child implementations.'),
-      store.t('Identify implicit relations between logical models.'),
-      store.t('Review structural warnings and complexity scores.')
+      store.t('Single-click any G6 node to slide open the Inspector drawer.'),
+      store.t('Check member properties, signatures, and AI structural details.'),
+      store.t('Double-click a G6 class node to render a UML ERD diagram dialog.'),
+      store.t('Scroll columns and check foreign class implementation lines.')
     ]
   },
   {
-    title: store.t('Git Commit & Activity Logs'),
-    desc: store.t('Advanced repository activity monitor. View commit log timelines, author distributions, and file edit histories. Prevent technical debt by monitoring active repository states.'),
-    img: '/docs/images/indexes.png',
+    title: store.t('AI DevOps Workspace & Audits'),
+    desc: store.t('Automate DevOps operations. Compute health scores, generate custom onboarding playbooks, DevOps reports, and codebase security audits with Google Gemini.'),
+    img: '/docs/images/07_devops_tab.png',
     steps: [
-      store.t('Open the Monitoring tab in the repository dashboard.'),
-      store.t('Inspect commit timelines, author names, and timestamps.'),
-      store.t('Track lines of code additions, deletions, and active changes.'),
-      store.t('Scan file modify events to detect potential hotspots.')
+      store.t('Load the DevOps tab to see open issues, MRs/PRs, and pipelines.'),
+      store.t('Click Generate Onboarding Guide to stream developer walkthroughs.'),
+      store.t('Click Run Security Audit to find vulnerabilities.'),
+      store.t('See code warnings highlighted in RED directly on your codebase mindmap.')
     ]
   },
   {
-    title: store.t('BaseFlow AI SRE Assistant'),
-    desc: store.t('Premium AI SRE automation copilot. Chat naturally to analyze repository schemas, request code visualizations, generate documentation, or ask the SRE SRE-specific performance questions.'),
-    img: '/docs/images/agent_welcome.png',
+    title: store.t('System Architecture & Flows'),
+    desc: store.t('Automatically deconstruct systems and class flows. Render dependency maps dynamically in the browser using Mermaid.'),
+    img: '/docs/images/09_architecture_tab.png',
     steps: [
-      store.t('Open the BaseFlow AI SRE chatbot sidebar on the right.'),
-      store.t('Ask the assistant to query classes, summarize code, or write scripts.'),
-      store.t('Ask the assistant to render real-time interactive ECharts graphs.'),
-      store.t('Trigger automated code health evaluations directly in chat.')
+      store.t('Navigate to the Architecture tab to view software maps.'),
+      store.t('Use zoom controls to zoom in, out, and reset Mermaid charts.'),
+      store.t('Click Fullscreen to expand graphs for deep architectural reviews.'),
+      store.t('Trace imports and system dependencies easily.')
+    ]
+  },
+  {
+    title: store.t('AI Document Playbooks'),
+    desc: store.t('Read repository documents and Markdown files contextually. Ask queries directly related to the documents, and publish playbooks to AI catalogs.'),
+    img: '/docs/images/10_documents_readme.png',
+    steps: [
+      store.t('Open the Documents tab to see markdown documentation files.'),
+      store.t('Select a document to render its content and view AI summaries.'),
+      store.t('Click Ask Agent to trigger a contextual Q&A chat drawer.'),
+      store.t('Publish playbooks directly to GitHub Copilot or GitLab Duo.')
+    ]
+  },
+  {
+    title: store.t('Sidebar Explorer & Selection Chat'),
+    desc: store.t('Explore code trees in the sidebar, view source files with line numbers and syntax highlighting, and select code blocks to explain.'),
+    img: '/docs/images/10b_OpenCut_class_inspector_code.png',
+    steps: [
+      store.t('Expand/collapse folder trees in the Codebase Explorer sidebar.'),
+      store.t('Select any file to launch the Class Inspector view.'),
+      store.t('Click properties or methods to auto-scroll and highlight lines.'),
+      store.t('Highlight code snippets in the editor to prompt the floating SRE chatbot.')
+    ]
+  },
+  {
+    title: store.t('Conversational Chatbot Assistant'),
+    desc: store.t('Chat directly with Google Gemini in a sliding sidebar. Access context-aware suggestion chips, optimize code, and copy AI code blocks.'),
+    img: '/docs/images/12_chatbot_sidebar.png',
+    steps: [
+      store.t('Trigger the sliding assistant sidebar from the bottom-right.'),
+      store.t('Select suggested contextual queries for rapid coding actions.'),
+      store.t('Write freeform questions to search files and optimize classes.'),
+      store.t('Copy generated code snippets instantly for development.')
     ]
   }
 ]);

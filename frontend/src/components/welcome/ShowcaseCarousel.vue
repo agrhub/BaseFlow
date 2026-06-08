@@ -30,24 +30,24 @@ interface ShowcaseItem {
 
 const showcaseImages: ShowcaseItem[] = [
   {
-    src: '/docs/images/agent_welcome.png',
-    title: 'AI Conversational Assistant',
-    desc: 'Google Gemini SRE conversational interface assisting with complex operations and ECharts rendering.'
+    src: '/docs/images/02_mindmap_full.png',
+    title: 'Interactive Codebase Mindmaps',
+    desc: 'Visualize package directories, focus class nodes, and switch between Mindmap and Neural Map layouts.'
   },
   {
-    src: '/docs/images/monitoring_metrics.png',
-    title: 'Observability Telemetry Dashboard',
-    desc: 'Real-time repository performance statistics, CPU/RAM levels, and active traces percentiles.'
+    src: '/docs/images/07_devops_tab.png',
+    title: 'AI DevOps Workspace & Auditing',
+    desc: 'Generate onboarding documents, dev reports, security audits, and view vulnerability highlight states.'
   },
   {
-    src: '/docs/images/guardian_resolution.png',
-    title: 'DB-Guardian Resolution Flow',
-    desc: 'Automated explains, explainQueryPlan execution stats, and latency improvement bar graphs.'
+    src: '/docs/images/09_architecture_tab.png',
+    title: 'System Architecture & Diagrams',
+    desc: 'Browse class flow interactions and system components rendered dynamically using Mermaid diagrams.'
   },
   {
-    src: '/docs/images/schema.png',
-    title: 'Semantic Schema Analyzer',
-    desc: 'Deconstruct schema structure, field occurrence rates, nested objects, and arrays.'
+    src: '/docs/images/10b_OpenCut_class_inspector_code.png',
+    title: 'Source Code Inspector & Selection Chat',
+    desc: 'Traverse directories, inspect methods, highlight lines, and select code snippets to explain with Gemini.'
   }
 ];
 </script>

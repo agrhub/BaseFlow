@@ -11,8 +11,6 @@ declare module 'markdown-it' {
   export default markdownIt;
 }
 
-// declare module 'vue3-mindmap' {
-//   const mindmap: any;
-//   export default mindmap;
-// }
+declare module 'element-plus';
+declare module 'vue-router';
 

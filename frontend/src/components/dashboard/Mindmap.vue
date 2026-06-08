@@ -88,14 +88,6 @@
         circle 
       />
       <el-button size="large" :icon="Expand" @click="expandAllNodes" :title="store.t('Expand All')" circle />
-      <el-button 
-        size="large" 
-        :icon="MagicStick"
-        :type="fisheyeEnabled ? 'primary' : ''"
-        @click="toggleFisheye" 
-        :title="fisheyeEnabled ? store.t('Disable Fisheye') : store.t('Enable Fisheye')" 
-        circle 
-      />
       <el-button size="large" :icon="FullScreen" @click="toggleFullscreen" :title="store.t('Fullscreen')" circle />
     </div>
 
@@ -187,161 +179,9 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { Graph, NodeEvent, CanvasEvent, GraphEvent, register, ExtensionCategory, BaseNode } from '@antv/g6';
-import { Rect as GRect, Text as GText, Circle as GCircle } from '@antv/g';
-import { ZoomIn, ZoomOut, Aim, FullScreen, Search, Filter, Lock, Unlock, Expand, MagicStick } from '@element-plus/icons-vue';
+import G6 from '@antv/g6';
+import { ZoomIn, ZoomOut, Aim, FullScreen, Search, Filter, Lock, Unlock, Expand } from '@element-plus/icons-vue';
 import { store } from '../../stores';
-
-// ──────────────────────────────────────────────
-// G6 v5 Custom Node Registration
-// MUST be called BEFORE any new Graph() instance
-// ──────────────────────────────────────────────
-class CustomG6Node extends BaseNode {
-  protected drawKeyShape(attributes: any, container: any): any {
-    const isDark = document.documentElement.classList.contains('dark');
-    const nodeType = attributes.nodeType || 'class';
-    const branchColor = attributes.branchColor || '#7C3AED';
-    const isHighlighted = attributes.isHighlighted;
-    const isVulnerable = attributes.isVulnerable;
-    const isDimmed = attributes.isDimmed;
-    const nodeWidth = attributes.nodeWidth || 200;
-    const nodeHeight = attributes.nodeHeight || 42;
-
-    const opacity = isDimmed ? 0.15 : 1.0;
-    let fill = isDark ? '#1E293B' : '#FFFFFF';
-    let stroke = branchColor;
-    let lineWidth = 1.8;
-    let shadowColor = 'rgba(0,0,0,0.12)';
-    let shadowBlur = 4;
-    let radius: number | number[] = 6;
-
-    if (nodeType === 'leaf') radius = 3;
-    else if (nodeType === 'directory') radius = 8;
-
-    if (isVulnerable) {
-      stroke = '#EF4444'; lineWidth = 3.0;
-      fill = isDark ? '#450a0a' : '#fef2f2';
-      shadowColor = '#EF4444'; shadowBlur = 16;
-    } else if (isHighlighted) {
-      stroke = '#00E0FF'; lineWidth = 2.5;
-      shadowColor = '#00E0FF'; shadowBlur = 14;
-    }
-
-    return this.upsert('key', GRect, {
-      x: -nodeWidth / 2,
-      y: -nodeHeight / 2,
-      width: nodeWidth,
-      height: nodeHeight,
-      fill,
-      stroke,
-      lineWidth,
-      radius,
-      opacity,
-      shadowColor,
-      shadowBlur,
-      shadowOffsetX: 0,
-      shadowOffsetY: 2,
-    }, container);
-  }
-
-  public render(attributes: any, container: any): void {
-    const isDark = document.documentElement.classList.contains('dark');
-    const nodeType = attributes.nodeType || 'class';
-    const branchColor = attributes.branchColor || '#7C3AED';
-    const isDimmed = attributes.isDimmed;
-    const isExpanded = attributes.isExpanded;
-    const isRoot = attributes.isRoot;
-    const isMethod = attributes.isMethod;
-    const isMore = attributes.isMore;
-    const nodeWidth = attributes.nodeWidth || 200;
-    const nodeHeight = attributes.nodeHeight || 42;
-    const nodeLabel = attributes.nodeLabel || '';
-    const nodeSubLabel = attributes.nodeSubLabel || '';
-    const opacity = isDimmed ? 0.15 : 1.0;
-    const isLeaf = nodeType === 'leaf';
-
-    // Background key shape (required for hit testing)
-    this.drawKeyShape(attributes, container);
-
-    // Icon indicator circle
-    const iconX = -nodeWidth / 2 + (isLeaf ? 12 : 16);
-    const iconR = isLeaf ? 4 : 7;
-    let iconChar = '◆';
-    if (nodeType === 'directory') iconChar = isExpanded ? '▾' : '▸';
-    else if (nodeType === 'class') iconChar = isRoot ? '⬡' : isMethod ? '⚡' : '◈';
-    else if (isLeaf) iconChar = isMore ? '+' : (isMethod ? '⚡' : '·');
-
-    this.upsert('icon-bg', GCircle, {
-      cx: iconX, cy: 0,
-      r: iconR,
-      fill: branchColor,
-      opacity,
-    }, container);
-
-    this.upsert('icon-text', GText, {
-      x: iconX, y: 0.5,
-      text: iconChar.charAt(0),
-      fontSize: isLeaf ? 6 : 7.5,
-      textAlign: 'center',
-      textBaseline: 'middle',
-      fill: '#fff',
-      opacity,
-    }, container);
-
-    // Main label
-    const labelX = -nodeWidth / 2 + (isLeaf ? 24 : 28);
-    const labelY = nodeSubLabel ? -6 : 0;
-    const titleFill = isLeaf
-      ? (isDark ? '#CBD5E1' : '#475569')
-      : (isDark ? '#E2E8F0' : '#1E293B');
-
-    this.upsert('label-text', GText, {
-      x: labelX,
-      y: labelY,
-      text: nodeLabel.length > 22 ? nodeLabel.substring(0, 20) + '…' : nodeLabel,
-      fontSize: isLeaf ? 8.5 : 10.5,
-      fontFamily: isLeaf
-        ? 'JetBrains Mono, Fira Code, monospace'
-        : 'system-ui, -apple-system, sans-serif',
-      fontWeight: isRoot ? 'bold' : '600',
-      textAlign: 'left',
-      textBaseline: 'middle',
-      fill: titleFill,
-      opacity,
-    }, container);
-
-    // Sub label (file path)
-    if (nodeSubLabel) {
-      this.upsert('sub-text', GText, {
-        x: -nodeWidth / 2 + 28,
-        y: 8,
-        text: nodeSubLabel.length > 24 ? nodeSubLabel.substring(0, 22) + '…' : nodeSubLabel,
-        fontSize: 7.5,
-        textAlign: 'left',
-        textBaseline: 'middle',
-        fill: isDark ? '#94A3B8' : '#64748B',
-        opacity,
-      }, container);
-    }
-
-    // Directory expand/collapse arrow on right
-    if (nodeType === 'directory') {
-      this.upsert('expand-arrow', GText, {
-        x: nodeWidth / 2 - 12,
-        y: 0,
-        text: isExpanded ? '▾' : '▸',
-        fontSize: 9,
-        textAlign: 'center',
-        textBaseline: 'middle',
-        fill: isDark ? '#94A3B8' : '#64748B',
-        opacity,
-      }, container);
-    }
-  }
-}
-
-// Register ONCE at module level
-register(ExtensionCategory.NODE, 'custom-g6-node', CustomG6Node);
 
 // ──────────────────────────────────────────────
 // Props & Emits
@@ -363,29 +203,222 @@ const emit = defineEmits<{
 const router = useRouter();
 
 // ──────────────────────────────────────────────
+// G6 Neural Map Node Registration
+// ──────────────────────────────────────────────
+G6.registerNode('custom-g6-node', {
+  draw(cfg: any, group: any) {
+    const isDark = document.documentElement.classList.contains('dark');
+    const type = cfg.nodeType || 'class';
+    const isRoot = cfg.isRoot;
+    const name = cfg.name || '';
+    const filePath = cfg.filePath || '';
+    const isHighlighted = cfg.isHighlighted;
+    const isDimmed = cfg.isDimmed;
+    const isVulnerable = cfg.isVulnerable;
+    const branchColor = cfg.branchColor || '#7C3AED';
+    const width = cfg.width || 200;
+    const height = cfg.height || 42;
+    
+    // Dimmed state opacity
+    const opacity = isDimmed ? 0.15 : 1.0;
+
+    // Background styling
+    let fill = isDark ? '#1E293B' : '#FFFFFF';
+    let stroke = branchColor;
+    let strokeWidth = 1.8;
+    
+    const relType = cfg.relType;
+    let shadowColor = 'rgba(0, 0, 0, 0.12)';
+    let shadowBlur = 4;
+
+    if (isVulnerable) {
+      stroke = '#EF4444'; // Red-500
+      strokeWidth = 3.0;
+      fill = isDark ? '#450a0a' : '#fef2f2';
+      shadowColor = '#EF4444';
+      shadowBlur = 16;
+    } else if (isHighlighted) {
+      stroke = '#00E0FF';
+      strokeWidth = 2.5;
+      shadowColor = '#00E0FF';
+      shadowBlur = 14;
+    } else if (relType) {
+      strokeWidth = 2.2;
+      shadowBlur = 8;
+      if (relType === 'extends') {
+        stroke = '#FFB800'; // Extends: Yellow
+        shadowColor = '#FFB800';
+      } else if (relType === 'implements') {
+        stroke = '#00E0FF'; // Implements: Blue-cyan
+        shadowColor = '#00E0FF';
+      } else {
+        stroke = '#8F9CAE'; // Uses: Gray
+        shadowColor = '#8F9CAE';
+      }
+    } else if (type === 'leaf') {
+      stroke = branchColor + '55';
+      strokeWidth = 1;
+      fill = isDark ? '#1E293B88' : '#F1F5F9';
+    } else if (type === 'directory') {
+      fill = isDark ? '#334155' : '#F8FAFC';
+    }
+
+    const keyShape = group.addShape('rect', {
+      attrs: {
+        x: -width / 2,
+        y: -height / 2,
+        width,
+        height,
+        fill,
+        stroke,
+        lineWidth: strokeWidth,
+        radius: isRoot ? 12 : (type === 'directory' ? 8 : (type === 'leaf' ? 4 : 6)),
+        opacity,
+        shadowColor,
+        shadowBlur,
+      },
+      name: 'node-rect',
+    });
+
+    // Node icon
+    let icon = '📄';
+    if (isVulnerable) icon = '🛡️';
+    else if (isRoot) icon = '⬡';
+    else if (type === 'directory') {
+      icon = cfg.isLeaf ? '📄' : (cfg.isExpanded ? '📂' : '📁');
+    }
+    else if (type === 'leaf') {
+      icon = cfg.isMore ? '🔸' : (cfg.isMethod ? '⚡' : '⚙️');
+    }
+
+    group.addShape('text', {
+      attrs: {
+        x: -width / 2 + 10,
+        y: 0,
+        text: icon,
+        fontSize: type === 'leaf' ? 10 : 12,
+        textAlign: 'left',
+        textBaseline: 'middle',
+        fill: branchColor,
+        opacity,
+      },
+      name: 'node-icon',
+    });
+
+    // Node title
+    let titleFill = isDark ? '#F8FAFC' : '#0F172A';
+    if (type === 'leaf') {
+      titleFill = isDark ? '#CBD5E1' : '#475569';
+    }
+    
+    group.addShape('text', {
+      attrs: {
+        x: -width / 2 + (type === 'leaf' ? 24 : 28),
+        y: filePath ? -6 : 0,
+        text: name.length > 20 ? name.substring(0, 18) + '...' : name,
+        fontSize: type === 'leaf' ? 8.5 : 10.5,
+        fontFamily: type === 'leaf' ? 'JetBrains Mono, Fira Code, monospace' : 'system-ui, -apple-system, sans-serif',
+        fontWeight: isRoot ? 'bold' : '600',
+        textAlign: 'left',
+        textBaseline: 'middle',
+        fill: titleFill,
+        opacity,
+      },
+      name: 'node-title',
+    });
+
+    // Node path subtitle
+    if (filePath) {
+      const displayPath = filePath.split('/').pop() || '';
+      group.addShape('text', {
+        attrs: {
+          x: -width / 2 + 28,
+          y: 8,
+          text: displayPath.length > 22 ? displayPath.substring(0, 20) + '...' : displayPath,
+          fontSize: 7.5,
+          textAlign: 'left',
+          textBaseline: 'middle',
+          fill: isDark ? '#94A3B8' : '#64748B',
+          opacity,
+        },
+        name: 'node-subtitle',
+      });
+    }
+
+    return keyShape;
+  }
+});
+
+// ──────────────────────────────────────────────
 // Layout Constants & Variables
 // ──────────────────────────────────────────────
 const graphContainer = ref<HTMLDivElement | null>(null);
-let graph: Graph | null = null;
+let graph: any = null;
 const currentLayoutMode = ref<'mindmap' | 'neural'>('mindmap');
 const expandedNodes = ref<Set<string>>(new Set(['mm-root']));
 const savedExpandedNodes = ref<Set<string> | null>(null);
 let isInitialLoad = true;
-const autoLOD = ref(false);
-const fisheyeEnabled = ref(false);
+const autoLOD = ref(false); // Disabled by default
 
-const isDarkRef = ref(document.documentElement.classList.contains('dark'));
-let _themeObs: MutationObserver | null = null;
+const toggleAutoLOD = () => {
+  autoLOD.value = !autoLOD.value;
+  if (autoLOD.value) {
+    handleViewportChange();
+  }
+};
 
-const canvasStyle = computed(() => ({
-  background: isDarkRef.value ? '#111827' : '#EEF2F8',
-}));
+const expandAllNodes = () => {
+  expandedNodes.value.clear();
+  expandedNodes.value.add('mm-root');
+  
+  if (props.mode === 'directory') {
+    const root = props.initialNodes[0];
+    if (!root) return;
+    const addFolderIds = (node: any) => {
+      if (node._id) {
+        expandedNodes.value.add(node._id);
+      }
+      if (node.children) {
+        node.children.forEach((c: any) => {
+          if (c.isFolder) {
+            addFolderIds(c);
+          }
+        });
+      }
+    };
+    addFolderIds(root);
+  } else {
+    props.initialNodes.forEach((n: any) => {
+      const fp = (n.data?.filePath || n.filePath || '').replace(/\\/g, '/');
+      const parts = fp.split('/');
+      let pathAccumulator = '';
+      const dirParts = parts.slice(0, -1);
+      dirParts.forEach((part: string) => {
+        pathAccumulator = pathAccumulator ? `${pathAccumulator}/${part}` : part;
+        expandedNodes.value.add(`dir-${pathAccumulator}`);
+      });
+    });
+  }
+  
+  expandedNodes.value = new Set(expandedNodes.value);
+  applyLayout(props.initialNodes);
+  
+  nextTick(() => {
+    if (graph) {
+      graph.fitView(40);
+    }
+  });
+};
 
-const ROOT_W   = 160;
-const NODE_W   = 200;
-const NODE_H   = 42;
-const COL_GAP  = 60;
-const ROW_GAP  = 8;
+const toggleFocus = () => {
+  emit('update:isFocusMode', !props.isFocusMode);
+};
+
+const ROOT_W        = 160;
+const NODE_W        = 200;
+const NODE_H        = 42;
+const COL_GAP       = 60;
+const ROW_GAP       = 8;
 const MAX_DEFAULT_NODES = 10;
 
 const COLORS = [
@@ -394,18 +427,16 @@ const COLORS = [
   '#6366F1','#EA580C','#16A34A','#9333EA',
 ];
 
-// ──────────────────────────────────────────────
-// State variables
-// ──────────────────────────────────────────────
-const activeNodeId   = ref<string | null>(null);
-const activeLeafName = ref<string | null>(null);
-const relatedNodeIds = ref<Set<string>>(new Set());
+// Track dark mode by observing html.dark class
+const isDarkRef = ref(document.documentElement.classList.contains('dark'));
+let _themeObs: MutationObserver | null = null;
 
-const searchQuery    = ref('');
-const layersMenuOpen = ref(false);
+const canvasStyle = computed(() => ({
+  background: isDarkRef.value ? '#111827' : '#EEF2F8',
+}));
 
 // ──────────────────────────────────────────────
-// Multi-directional Class Tree Builder
+// Multi-directional Class Tree Builder (Logic from old Vue Flow)
 // ──────────────────────────────────────────────
 interface TreeNode {
   id: string;
@@ -445,8 +476,11 @@ function buildClassTree(
   if (activeNodeIdVal) {
     const activeLower = activeNodeIdVal.toLowerCase();
     initialEdgesVal.forEach(e => {
-      if (e.source.toLowerCase() === activeLower) relatedClassIds.add(e.target);
-      else if (e.target.toLowerCase() === activeLower) relatedClassIds.add(e.source);
+      if (e.source.toLowerCase() === activeLower) {
+        relatedClassIds.add(e.target);
+      } else if (e.target.toLowerCase() === activeLower) {
+        relatedClassIds.add(e.source);
+      }
     });
   }
 
@@ -496,39 +530,50 @@ function buildClassTree(
       subtreeHeight: 42
     };
 
-    const pps = n.data.properties || [];
+    const props = n.data.properties || [];
     const meths = n.data.methods || [];
 
     if (isNodeActive) {
-      pps.slice(0, 5).forEach((p: any) => {
+      const showProps = props.slice(0, 5);
+      showProps.forEach((p: any) => {
+        const isHighlighted = activeLeafNameVal === p.name;
         classNode.children.push({
           id: `${classNodeId}-prop-${p.name}`,
           name: p.name,
           nameOnly: p.name,
           type: 'property',
           children: [],
-          width: 150, height: 24, subtreeHeight: 24,
-          isHighlighted: activeLeafNameVal === p.name
+          width: 150,
+          height: 24,
+          subtreeHeight: 24,
+          isHighlighted
         });
       });
-      if (pps.length > 5) {
+      if (props.length > 5) {
         classNode.children.push({
           id: `${classNodeId}-prop-more`,
-          name: `+${pps.length - 5} more properties`,
+          name: `+${props.length - 5} more properties`,
           type: 'more',
           children: [],
-          width: 140, height: 22, subtreeHeight: 22
+          width: 140,
+          height: 22,
+          subtreeHeight: 22
         });
       }
-      meths.slice(0, 5).forEach((m: any) => {
+
+      const showMeths = meths.slice(0, 5);
+      showMeths.forEach((m: any) => {
+        const isHighlighted = activeLeafNameVal === m.name;
         classNode.children.push({
           id: `${classNodeId}-meth-${m.name}`,
           name: `${m.name}()`,
           nameOnly: m.name,
           type: 'method',
           children: [],
-          width: 150, height: 24, subtreeHeight: 24,
-          isHighlighted: activeLeafNameVal === m.name
+          width: 150,
+          height: 24,
+          subtreeHeight: 24,
+          isHighlighted
         });
       });
       if (meths.length > 5) {
@@ -537,11 +582,14 @@ function buildClassTree(
           name: `+${meths.length - 5} more methods`,
           type: 'more',
           children: [],
-          width: 140, height: 22, subtreeHeight: 22
+          width: 140,
+          height: 22,
+          subtreeHeight: 22
         });
       }
-    } else if (isNodeRelated && activeLeafNameVal) {
-      const matchingProp = pps.find((p: any) => p.name === activeLeafNameVal);
+    } 
+    else if (isNodeRelated && activeLeafNameVal) {
+      const matchingProp = props.find((p: any) => p.name === activeLeafNameVal);
       if (matchingProp) {
         classNode.children.push({
           id: `${classNodeId}-prop-${matchingProp.name}`,
@@ -549,7 +597,9 @@ function buildClassTree(
           nameOnly: matchingProp.name,
           type: 'property',
           children: [],
-          width: 150, height: 24, subtreeHeight: 24,
+          width: 150,
+          height: 24,
+          subtreeHeight: 24,
           isHighlighted: true
         });
       }
@@ -561,7 +611,9 @@ function buildClassTree(
           nameOnly: matchingMeth.name,
           type: 'method',
           children: [],
-          width: 150, height: 24, subtreeHeight: 24,
+          width: 150,
+          height: 24,
+          subtreeHeight: 24,
           isHighlighted: true
         });
       }
@@ -583,7 +635,9 @@ function measureNodeHeight(n: TreeNode): number {
     const childHeight = measureNodeHeight(child);
     const gap = (child.type === 'property' || child.type === 'method' || child.type === 'more') ? 6 : 10;
     totalChildHeight += childHeight;
-    if (index < n.children.length - 1) totalChildHeight += gap;
+    if (index < n.children.length - 1) {
+      totalChildHeight += gap;
+    }
   });
   n.subtreeHeight = Math.max(n.height, totalChildHeight);
   return n.subtreeHeight;
@@ -592,16 +646,20 @@ function measureNodeHeight(n: TreeNode): number {
 function positionSubtree(node: TreeNode, x: number, y: number, side: 'left' | 'right') {
   node.x = x;
   node.y = y;
+  
   if (!node.children || node.children.length === 0 || (node.type === 'directory' && !expandedNodes.value.has(node.id))) return;
-
+  
   let totalChildHeight = 0;
   node.children.forEach((child, index) => {
     const gap = (child.type === 'property' || child.type === 'method' || child.type === 'more') ? 6 : 10;
     totalChildHeight += child.subtreeHeight;
-    if (index < node.children.length - 1) totalChildHeight += gap;
+    if (index < node.children.length - 1) {
+      totalChildHeight += gap;
+    }
   });
-
+  
   let childStartY = y - totalChildHeight / 2;
+  
   node.children.forEach((child) => {
     const gap = (child.type === 'property' || child.type === 'method' || child.type === 'more') ? 6 : 10;
     const childX = side === 'right'
@@ -613,11 +671,21 @@ function positionSubtree(node: TreeNode, x: number, y: number, side: 'left' | 'r
   });
 }
 
-function flattenTree(node: TreeNode, parentId: string | null, side: 'left' | 'right', outNodes: any[], outEdges: any[]) {
+function flattenTree(
+  node: TreeNode,
+  parentId: string | null,
+  side: 'left' | 'right',
+  outNodes: any[],
+  outEdges: any[]
+) {
   let type = 'customClass';
-  if (node.type === 'root') type = 'customClass';
-  else if (node.type === 'directory') type = 'customDirectory';
-  else if (node.type === 'property' || node.type === 'method' || node.type === 'more') type = 'customLeaf';
+  if (node.type === 'root') {
+    type = 'customClass';
+  } else if (node.type === 'directory') {
+    type = 'customDirectory';
+  } else if (node.type === 'property' || node.type === 'method' || node.type === 'more') {
+    type = 'customLeaf';
+  }
 
   outNodes.push({
     id: node.id,
@@ -645,6 +713,7 @@ function flattenTree(node: TreeNode, parentId: string | null, side: 'left' | 'ri
       id: `edge-${parentId}-${node.id}`,
       source: parentId,
       target: node.id,
+      type: 'smoothstep',
       style: {
         stroke: color + (isLeafEdge ? '55' : 'bb'),
         strokeWidth: isLeafEdge ? 1.0 : (node.type === 'directory' ? 2.2 : 1.5),
@@ -654,8 +723,14 @@ function flattenTree(node: TreeNode, parentId: string | null, side: 'left' | 'ri
     });
   }
 
-  if (node.type === 'directory' && !expandedNodes.value.has(node.id)) return;
-  node.children.forEach(child => { flattenTree(child, node.id, side, outNodes, outEdges); });
+  // IF THE NODE IS COLLAPSED, DO NOT FLATTEN ITS CHILDREN!
+  if (node.type === 'directory' && !expandedNodes.value.has(node.id)) {
+    return;
+  }
+
+  node.children.forEach(child => {
+    flattenTree(child, node.id, side, outNodes, outEdges);
+  });
 }
 
 function buildClassGraph(rawNodes: any[]) {
@@ -683,14 +758,22 @@ function buildClassGraph(rawNodes: any[]) {
     return count;
   };
 
-  const sortedRootChildren = [...rootNode.children].sort((a, b) => countDescendants(b) - countDescendants(a));
+  const sortedRootChildren = [...rootNode.children].sort((a, b) => {
+    return countDescendants(b) - countDescendants(a);
+  });
 
   let leftWeight = 0;
   let rightWeight = 0;
+
   sortedRootChildren.forEach(child => {
     const w = countDescendants(child);
-    if (leftWeight <= rightWeight) { leftChildren.push(child); leftWeight += w; }
-    else { rightChildren.push(child); rightWeight += w; }
+    if (leftWeight <= rightWeight) {
+      leftChildren.push(child);
+      leftWeight += w;
+    } else {
+      rightChildren.push(child);
+      rightWeight += w;
+    }
   });
 
   const outN: any[] = [];
@@ -717,11 +800,15 @@ function buildClassGraph(rawNodes: any[]) {
     let totalRightHeight = 0;
     rightChildren.forEach((child, index) => {
       totalRightHeight += child.subtreeHeight;
-      if (index < rightChildren.length - 1) totalRightHeight += GRP_GAP_TREE;
+      if (index < rightChildren.length - 1) {
+        totalRightHeight += GRP_GAP_TREE;
+      }
     });
     let rightStartY = -totalRightHeight / 2;
     rightChildren.forEach(child => {
-      positionSubtree(child, ROOT_W / 2 + COL_GAP, rightStartY + child.subtreeHeight / 2, 'right');
+      const childX = ROOT_W / 2 + COL_GAP;
+      const childY = rightStartY + child.subtreeHeight / 2;
+      positionSubtree(child, childX, childY, 'right');
       rightStartY += child.subtreeHeight + GRP_GAP_TREE;
     });
   }
@@ -730,17 +817,26 @@ function buildClassGraph(rawNodes: any[]) {
     let totalLeftHeight = 0;
     leftChildren.forEach((child, index) => {
       totalLeftHeight += child.subtreeHeight;
-      if (index < leftChildren.length - 1) totalLeftHeight += GRP_GAP_TREE;
+      if (index < leftChildren.length - 1) {
+        totalLeftHeight += GRP_GAP_TREE;
+      }
     });
     let leftStartY = -totalLeftHeight / 2;
     leftChildren.forEach(child => {
-      positionSubtree(child, -ROOT_W / 2 - COL_GAP - child.width, leftStartY + child.subtreeHeight / 2, 'left');
+      const childX = -ROOT_W / 2 - COL_GAP - child.width;
+      const childY = leftStartY + child.subtreeHeight / 2;
+      positionSubtree(child, childX, childY, 'left');
       leftStartY += child.subtreeHeight + GRP_GAP_TREE;
     });
   }
 
-  leftChildren.forEach(child => { flattenTree(child, rootNode.id, 'left', outN, outE); });
-  rightChildren.forEach(child => { flattenTree(child, rootNode.id, 'right', outN, outE); });
+  leftChildren.forEach(child => {
+    flattenTree(child, rootNode.id, 'left', outN, outE);
+  });
+
+  rightChildren.forEach(child => {
+    flattenTree(child, rootNode.id, 'right', outN, outE);
+  });
 
   const nodeIds = new Set(outN.map(n => n.id));
   props.initialEdges.forEach(e => {
@@ -749,14 +845,28 @@ function buildClassGraph(rawNodes: any[]) {
       let strokeColor = '#8F9CAE';
       let strokeWidth = 1.2;
       let strokeDash = undefined;
-      if (type === 'extends') { strokeColor = '#FFB800'; strokeWidth = 1.6; }
-      else if (type === 'implements') { strokeColor = '#00E0FF'; strokeWidth = 1.6; }
-      else if (type === 'uses') { strokeDash = '5,5'; }
+      
+      if (type === 'extends') {
+        strokeColor = '#FFB800';
+        strokeWidth = 1.6;
+      } else if (type === 'implements') {
+        strokeColor = '#00E0FF';
+        strokeWidth = 1.6;
+      } else if (type === 'uses') {
+        strokeDash = '5,5';
+      }
+
       outE.push({
         id: e.id,
         source: e.source,
         target: e.target,
-        style: { stroke: strokeColor, strokeWidth, strokeDasharray: strokeDash, opacity: 0.85 },
+        type: 'smoothstep',
+        style: {
+          stroke: strokeColor,
+          strokeWidth,
+          strokeDasharray: strokeDash,
+          opacity: 0.85
+        },
         data: e.data
       });
     }
@@ -767,6 +877,7 @@ function buildClassGraph(rawNodes: any[]) {
       n.id.startsWith(activeNodeId.value + '-') &&
       (n.id.endsWith('-prop-' + activeLeafName.value) || n.id.endsWith('-meth-' + activeLeafName.value))
     );
+    
     if (activeLeafNode) {
       outN.forEach(n => {
         if (n.id !== activeLeafNode.id &&
@@ -776,7 +887,13 @@ function buildClassGraph(rawNodes: any[]) {
             id: `leaf-link-${activeLeafNode.id}-${n.id}`,
             source: activeLeafNode.id,
             target: n.id,
-            style: { stroke: '#00E0FF', strokeWidth: 2.2, strokeDasharray: '4,4', opacity: 1.0 }
+            type: 'smoothstep',
+            style: {
+              stroke: '#00E0FF',
+              strokeWidth: 2.2,
+              strokeDasharray: '4,4',
+              opacity: 1.0
+            }
           });
         }
       });
@@ -787,7 +904,7 @@ function buildClassGraph(rawNodes: any[]) {
 }
 
 // ──────────────────────────────────────────────
-// Directory-tree graph builder
+// Directory-tree graph builder (recursive)
 // ──────────────────────────────────────────────
 let _dtId = 0;
 function measureTree(node: any): number {
@@ -798,7 +915,6 @@ function measureTree(node: any): number {
   node._h = h;
   return h;
 }
-
 function placeTree(node: any, x: number, cy: number, depth: number, outN: any[], outE: any[]) {
   node._id = node._id || `dt-${_dtId++}`;
   const isExpanded = expandedNodes.value.has(node._id);
@@ -815,13 +931,13 @@ function placeTree(node: any, x: number, cy: number, depth: number, outN: any[],
     outE.push({
       id: `de-${node._id}-${c._id || `dt-${_dtId}`}`,
       source: node._id, target: c._id || `dt-${_dtId}`,
+      type: 'smoothstep',
       style: { stroke: COLORS[depth % COLORS.length] + '99', strokeWidth: 1.5 },
     });
     placeTree(c, col, ccy, depth + 1, outN, outE);
     curY += c._h + ROW_GAP;
   });
 }
-
 function buildDirGraph(root: any) {
   if (!root) return { nodes: [], edges: [] };
   _dtId = 0; measureTree(root);
@@ -831,380 +947,318 @@ function buildDirGraph(root: any) {
 }
 
 // ──────────────────────────────────────────────
-// Convert internal graph data → G6 v5 node/edge format
+// G6 Interactive Setup & Lifecycle
 // ──────────────────────────────────────────────
-function toG6Nodes(res: { nodes: any[], edges: any[] }): any[] {
-  const isNeural = currentLayoutMode.value === 'neural';
-  return res.nodes.map(n => {
-    const isNodeActive = activeNodeId.value === n.id;
-    const isNodeRelated = relatedNodeIds.value.has(n.id);
-    const isDimmed = !!(activeNodeId.value && !isNodeActive && !isNodeRelated && n.id !== 'mm-root');
+const activeNodeId   = ref<string | null>(null);
+const activeLeafName = ref<string | null>(null);
+const relatedNodeIds = ref<Set<string>>(new Set());
 
-    let relType: string | undefined;
-    if (isNodeRelated && activeNodeId.value) {
-      const aId = activeNodeId.value.toLowerCase();
-      const edge = props.initialEdges.find(e =>
-        (e.source.toLowerCase() === aId && e.target.toLowerCase() === n.id.toLowerCase()) ||
-        (e.target.toLowerCase() === aId && e.source.toLowerCase() === n.id.toLowerCase())
-      );
-      if (edge) relType = edge.data?.type || 'uses';
-    }
+const searchQuery = ref('');
+const layersMenuOpen = ref(false);
 
-    let nodeType = 'class';
-    if (n.type === 'customDirectory') nodeType = 'directory';
-    else if (n.type === 'customLeaf') nodeType = 'leaf';
+const toggleLayersMenu = () => {
+  layersMenuOpen.value = !layersMenuOpen.value;
+};
 
-    const nodeWidth = n.data?.width || (nodeType === 'leaf' ? 160 : nodeType === 'directory' ? 180 : 200);
-    const nodeHeight = n.data?.height || (nodeType === 'leaf' ? 26 : nodeType === 'directory' ? 38 : 42);
-    const branchColor = n.data?.branchColor || COLORS[0];
+const selectLayer = (layout: 'mindmap' | 'neural') => {
+  switchLayout(layout);
+  layersMenuOpen.value = false;
+};
 
-    // Determine highlight/dimmed based on relType
-    let isHighlighted = n.data?.isHighlighted || isNodeActive;
-    if (relType) isHighlighted = true;
-
-    // Determine branch color based on rel type
-    let effectiveBranchColor = branchColor;
-    if (relType === 'extends') effectiveBranchColor = '#FFB800';
-    else if (relType === 'implements') effectiveBranchColor = '#00E0FF';
-
-    const filePath = n.data?.filePath || '';
-    const nodeSubLabel = filePath ? filePath.split('/').pop() || '' : '';
-
-    return {
-      id: n.id,
-      style: {
-        // Preset positions (used when layout: 'preset')
-        x: n.position.x + nodeWidth / 2,
-        y: n.position.y + nodeHeight / 2,
-        // Custom visual attributes (accessed in render() via attributes.*)
-        nodeType,
-        nodeLabel: n.data?.name || n.id,
-        nodeSubLabel: nodeType === 'leaf' ? '' : nodeSubLabel,
-        branchColor: effectiveBranchColor,
-        isHighlighted,
-        isDimmed,
-        isVulnerable: n.data?.isVulnerable || false,
-        isExpanded: expandedNodes.value.has(n.id),
-        isRoot: n.data?.isRoot || false,
-        isMethod: n.data?.isMethod || false,
-        isMore: n.data?.isMore || false,
-        nameOnly: n.data?.nameOnly,
-        nodeWidth,
-        nodeHeight,
-        // Size for G6 layout calculations
-        size: [nodeWidth, nodeHeight],
-      },
-      data: {
-        filePath,
-        depth: n.data?.depth ?? n.depth ?? 0,
-        folderDepth: n.data?.depth ?? n.depth ?? 0,
-        classData: n.data,
-        nodeType,
-      }
-    };
-  });
-}
-
-function toG6Edges(res: { nodes: any[], edges: any[] }): any[] {
-  const isNeural = currentLayoutMode.value === 'neural';
-
-  return res.edges.map(e => {
-    const isLeafEdge = e.id.includes('-prop-') || e.id.includes('-meth-') || e.id.includes('-more');
-    const isLeafLink = e.id.startsWith('leaf-link-');
-    const isTreeEdge = e.id.startsWith('edge-') || e.id.startsWith('de-');
-
-    let isRel = true;
-    if (activeNodeId.value) {
-      if (isLeafLink) isRel = true;
-      else if (isLeafEdge) {
-        if (activeLeafName.value) {
-          isRel = (e.target.endsWith('-prop-' + activeLeafName.value) || e.target.endsWith('-meth-' + activeLeafName.value)) &&
-            (e.source === activeNodeId.value || relatedNodeIds.value.has(e.source));
-        } else {
-          isRel = e.source === activeNodeId.value;
-        }
-      } else {
-        const isTreeEdgeForActive = e.source === activeNodeId.value || e.target === activeNodeId.value ||
-          e.source === 'mm-root' || e.target === 'mm-root';
-        const isRelEdgeForActive = (e.source.toLowerCase() === activeNodeId.value.toLowerCase() ||
-          e.target.toLowerCase() === activeNodeId.value.toLowerCase()) && !e.id.startsWith('edge-');
-        isRel = isTreeEdgeForActive || isRelEdgeForActive;
-      }
-    }
-
-    const stroke = e.style?.stroke || '#8F9CAE';
-    const lineWidth = e.style?.strokeWidth || 1.5;
-    const lineDash = e.style?.strokeDasharray ? [4, 4] : undefined;
-    const opacity = activeNodeId.value ? (isRel ? 0.85 : 0.05) : 0.85;
-
-    // Arrow heads for class relationships
-    let endArrow = false;
-    const isUmlRel = !e.id.startsWith('edge-') && !e.id.startsWith('de-') && e.data?.type;
-    if (isUmlRel) {
-      endArrow = { path: 'M 0,0 L 10,5 L 0,10 z', fill: stroke };
-    }
-
-    // Edge type: cubic-horizontal for mindmap tree, line for neural
-    const edgeType = (isNeural || !isTreeEdge) ? 'line' : 'cubic-horizontal';
-
-    return {
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      type: edgeType,
-      style: {
-        stroke,
-        lineWidth: isRel ? lineWidth : 0.5,
-        opacity,
-        ...(lineDash && { lineDash }),
-        ...(endArrow && { endArrow }),
-      },
-      data: e.data || {},
-    };
-  });
-}
-
-// ──────────────────────────────────────────────
-// Apply Layout (main data update function)
-// ──────────────────────────────────────────────
-async function applyLayout(raw: any[]) {
-  if (!graph) return;
-  if (!raw?.length) {
-    graph.setData({ nodes: [], edges: [] });
-    await graph.render();
-    return;
+const closeLayersMenu = (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  if (!target.closest('.google-layers-switcher')) {
+    layersMenuOpen.value = false;
   }
+};
 
-  computeRelatedNodes();
-
-  if (currentLayoutMode.value === 'neural') {
-    // In neural mode, update only visual styles without re-running layout
-    const allNodes = graph.getNodeData() as any[];
-    if (allNodes.length > 0) {
-      const updates = allNodes.map((nd: any) => {
-        const id = nd.id;
-        const isNodeActive = activeNodeId.value === id;
-        const isNodeRelated = relatedNodeIds.value.has(id);
-        const isDimmed = !!(activeNodeId.value && !isNodeActive && !isNodeRelated && id !== 'mm-root');
-        const isHighlighted = isNodeActive;
-
-        return {
-          id,
-          style: {
-            ...nd.style,
-            isHighlighted,
-            isDimmed,
-            isExpanded: expandedNodes.value.has(id),
-          }
-        };
+const allSearchableItems = computed(() => {
+  const items: Array<{ id: string; name: string; type: 'class' | 'directory'; detail: string }> = [];
+  
+  props.initialNodes.forEach((n: any) => {
+    if (n.data?.name) {
+      items.push({
+        id: n.id,
+        name: n.data.name,
+        type: 'class',
+        detail: n.data.filePath || ''
       });
-      graph.updateNodeData(updates);
-      await graph.draw();
-      return;
     }
-    // First time in neural mode - fall through to full render
+  });
+  
+  const dirs = new Set<string>();
+  props.initialNodes.forEach((n: any) => {
+    const fp = (n.data?.filePath || n.filePath || '').replace(/\\/g, '/');
+    const parts = fp.split('/');
+    let pathAccumulator = '';
+    const dirParts = parts.slice(0, -1);
+    dirParts.forEach((part: string) => {
+      pathAccumulator = pathAccumulator ? `${pathAccumulator}/${part}` : part;
+      dirs.add(pathAccumulator);
+    });
+  });
+  
+  dirs.forEach(dirPath => {
+    const name = dirPath.split('/').pop() || dirPath;
+    items.push({
+      id: `dir-${dirPath}`,
+      name: name,
+      type: 'directory',
+      detail: dirPath
+    });
+  });
+  
+  return items;
+});
+
+const querySearch = (queryString: string, cb: any) => {
+  const query = queryString.toLowerCase().trim();
+  const results = query
+    ? allSearchableItems.value.filter(item => 
+        item.name.toLowerCase().includes(query) || 
+        item.detail.toLowerCase().includes(query)
+      )
+    : allSearchableItems.value.slice(0, 5);
+  cb(results);
+};
+
+const handleSearchSelect = (item: any) => {
+  if (item.type === 'class') {
+    focusNode(item.id);
+  } else if (item.type === 'directory') {
+    expandedNodes.value.add(item.id);
+    applyLayout(props.initialNodes);
+    
+    nextTick(() => {
+      const g6Item = graph.findById(item.id);
+      if (g6Item) {
+        graph.focusItem(g6Item, true, {
+          easing: 'easeCubic',
+          duration: 500,
+        });
+        activeNodeId.value = null;
+        emit('select-node', item.id);
+      }
+    });
   }
+};
 
-  // Mindmap mode (or initial neural load): full rebuild with preset positions
-  const res = props.mode === 'directory' ? buildDirGraph(raw[0]) : buildClassGraph(raw);
-  const g6Nodes = toG6Nodes(res);
-  const g6Edges = toG6Edges(res);
+const focusNode = (nodeId: string) => {
+  if (!graph) return;
+  
+  expandParentsForClass(nodeId);
+  applyLayout(props.initialNodes);
+  
+  nextTick(() => {
+    const item = graph.findById(nodeId);
+    if (item) {
+      highlightNode(nodeId);
+      
+      graph.focusItem(item, true, {
+        easing: 'easeCubic',
+        duration: 500,
+      });
+    }
+  });
+};
 
-  graph.setData({ nodes: g6Nodes, edges: g6Edges });
-  await graph.render(); // preset layout uses x,y from style
+const focusVulnerabilities = () => {
+  if (store.vulnerableNodes && store.vulnerableNodes.length > 0) {
+    focusNode(store.vulnerableNodes[0]);
+  }
+};
 
-  if (isInitialLoad) {
-    isInitialLoad = false;
-    await graph.fitView({ padding: [40] });
+function initInitialExpansion(rawNodes: any[]) {
+  expandedNodes.value.clear();
+  expandedNodes.value.add('mm-root');
+  
+  if (!rawNodes || rawNodes.length === 0) return;
+  
+  if (props.mode === 'directory') {
+    const root = rawNodes[0];
+    buildDirGraph(root);
+    expandedNodes.value.add(root._id);
+    
+    const queue: any[] = [];
+    if (root.children) queue.push(...root.children);
+    
+    let totalNodes = 1 + (root.children?.length || 0) + (root.files?.length || 0);
+    
+    while (queue.length > 0 && totalNodes < MAX_DEFAULT_NODES) {
+      const current = queue.shift();
+      if (current && current.isFolder) {
+        expandedNodes.value.add(current._id);
+        totalNodes += (current.children?.length || 0) + (current.files?.length || 0);
+        if (current.children) {
+          queue.push(...current.children);
+        }
+      }
+    }
+  } else {
+    const rootTree = buildClassTree(rawNodes, null, null, []);
+    
+    const queue: TreeNode[] = [];
+    if (rootTree.children) queue.push(...rootTree.children);
+    
+    let totalNodes = 1 + rootTree.children.length;
+    
+    while (queue.length > 0 && totalNodes < MAX_DEFAULT_NODES) {
+      const current = queue.shift();
+      if (current && current.type === 'directory') {
+        expandedNodes.value.add(current.id);
+        totalNodes += current.children.length;
+        queue.push(...current.children);
+      }
+    }
   }
 }
 
-// ──────────────────────────────────────────────
-// G6 Initialization
-// ──────────────────────────────────────────────
-const initG6Graph = () => {
-  if (!graphContainer.value) return;
-
-  const width  = graphContainer.value.clientWidth  || 800;
-  const height = graphContainer.value.clientHeight || 550;
-  const isDark = document.documentElement.classList.contains('dark');
-
-  // WebGPU detection (informational)
-  const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator;
-  if (hasWebGPU) console.info('[Mindmap] WebGPU available — using Canvas renderer (WebGPU opt-in disabled)');
-
-  graph = new Graph({
-    container: graphContainer.value,
-    width,
-    height,
-    autoFit: false, // We handle fitView manually on initial load
-
-    // Custom node renderer
-    node: {
-      type: 'custom-g6-node',
-    },
-
-    // Default edge style (type is set per-edge in toG6Edges)
-    edge: {
-      style: {
-        stroke: isDark ? '#475569' : '#CBD5E1',
-        lineWidth: 1.5,
-        opacity: 0.85,
-      },
-    },
-
-    // v5 behaviors (replaces v4 modes)
-    behaviors: [
-      'drag-canvas',
-      'zoom-canvas',
-      { type: 'drag-element', enable: true },
-    ],
-
-    // Preset layout: use x,y from node style
-    layout: { type: 'preset' },
-
-    // Zoom constraints
-    zoomRange: [0.05, 5],
-  });
-
-  // ── Event Listeners ──
-
-  // Node click
-  graph.on(NodeEvent.CLICK, (event: any) => {
-    const id = event.target?.id;
-    if (!id) return;
-    const nodeData = graph!.getNodeData(id) as any;
-    if (!nodeData) return;
-
-    const nodeType = nodeData.data?.nodeType || nodeData.style?.nodeType;
-    const style = nodeData.style || {};
-
-    if (nodeType === 'leaf') {
-      if (style.isMore) return;
-      const nameOnly = style.nameOnly;
-      if (nameOnly) {
-        activeLeafName.value = activeLeafName.value === nameOnly ? null : nameOnly;
+let viewportTimeout: any = null;
+const handleViewportChange = () => {
+  if (viewportTimeout) clearTimeout(viewportTimeout);
+  viewportTimeout = setTimeout(() => {
+    if (!graph || !props.initialNodes?.length) return;
+    if (activeNodeId.value) return; // Disable zoom rule when a node is selected
+    if (!autoLOD.value) return; // Disable zoom rule when auto LOD is off
+    
+    const width = graph.getWidth();
+    const height = graph.getHeight();
+    const zoom = graph.getZoom();
+    
+    const minPoint = graph.getPointByCanvas(0, 0);
+    const maxPoint = graph.getPointByCanvas(width, height);
+    
+    const padX = 180;
+    const padY = 120;
+    const minX = minPoint.x - padX;
+    const maxX = maxPoint.x + padX;
+    const minY = minPoint.y - padY;
+    const maxY = maxPoint.y + padY;
+    
+    let changed = false;
+    
+    const g6Nodes = graph.getNodes();
+    g6Nodes.forEach((node: any) => {
+      const model = node.getModel();
+      const nodeType = model.nodeType ?? model.data?.nodeType;
+      if (nodeType === 'directory') {
+        const { x, y } = model;
+        const isVisible = (x >= minX && x <= maxX && y >= minY && y <= maxY);
+        const nodeDepth = model.folderDepth ?? model.data?.depth ?? model.depth ?? 0;
+        const isExpanded = expandedNodes.value.has(model.id);
+        
+        let shouldBeExpanded = isExpanded;
+        
+        if (zoom > 0.7) {
+          // Zoomed in close: expand visible directories
+          if (isVisible) {
+            shouldBeExpanded = true;
+          }
+        } else if (zoom > 0.5) {
+          // Moderate zoom: expand visible depth <= 2, collapse depth >= 3
+          if (nodeDepth >= 3) {
+            shouldBeExpanded = false;
+          } else if (isVisible && nodeDepth <= 2) {
+            shouldBeExpanded = true;
+          }
+        } else if (zoom > 0.3) {
+          // Low zoom: expand visible depth <= 1, collapse depth >= 2
+          if (nodeDepth >= 2) {
+            shouldBeExpanded = false;
+          } else if (isVisible && nodeDepth <= 1) {
+            shouldBeExpanded = true;
+          }
+        } else {
+          // Zoomed out far: collapse all directories
+          if (nodeDepth >= 1) {
+            shouldBeExpanded = false;
+          }
+        }
+        
+        if (shouldBeExpanded !== isExpanded) {
+          if (shouldBeExpanded) {
+            expandedNodes.value.add(model.id);
+          } else {
+            expandedNodes.value.delete(model.id);
+          }
+          changed = true;
+        }
       }
-    } else if (nodeType === 'class') {
-      if (style.isRoot) {
-        clearHighlight();
-        emit('select-class', null);
-      } else {
-        activeLeafName.value = null;
-        highlightNode(id);
-        expandRelatedFolders(id);
-      }
-    } else if (nodeType === 'directory') {
-      clearHighlight();
-      emit('select-node', nodeData.data?.classData || nodeData.data);
-
-      if (expandedNodes.value.has(id)) expandedNodes.value.delete(id);
-      else expandedNodes.value.add(id);
+    });
+    
+    if (changed) {
       expandedNodes.value = new Set(expandedNodes.value);
       applyLayout(props.initialNodes);
     }
+  }, 200);
+};
+
+function expandParentsForClass(classId: string) {
+  const node = props.initialNodes.find(x => x.id.toLowerCase() === classId.toLowerCase());
+  if (!node) return;
+  const filePath = node.data?.filePath || node.filePath;
+  if (!filePath) return;
+
+  const fp = filePath.replace(/\\/g, '/');
+  const parts = fp.split('/');
+  let pathAccumulator = '';
+  const dirParts = parts.slice(0, -1);
+
+  dirParts.forEach((part: string) => {
+    pathAccumulator = pathAccumulator ? `${pathAccumulator}/${part}` : part;
+    expandedNodes.value.add(`dir-${pathAccumulator}`);
   });
+}
 
-  // Node double click
-  graph.on(NodeEvent.DBLCLICK, (event: any) => {
-    const id = event.target?.id;
-    if (!id) return;
-    const nodeData = graph!.getNodeData(id) as any;
-    if (!nodeData) return;
+function expandRelatedFolders(classId: string) {
+  const keepers = new Set<string>();
+  keepers.add('mm-root');
+  
+  const collectParents = (id: string) => {
+    const node = props.initialNodes.find(x => x.id.toLowerCase() === id.toLowerCase());
+    if (!node) return;
+    const filePath = node.data?.filePath || node.filePath;
+    if (!filePath) return;
+    const fp = filePath.replace(/\\/g, '/');
+    const parts = fp.split('/');
+    let pathAccumulator = '';
+    const dirParts = parts.slice(0, -1);
+    dirParts.forEach((part: string) => {
+      pathAccumulator = pathAccumulator ? `${pathAccumulator}/${part}` : part;
+      keepers.add(`dir-${pathAccumulator}`);
+    });
+  };
 
-    const nodeType = nodeData.data?.nodeType || nodeData.style?.nodeType;
-    if (nodeType === 'directory') {
-      enterDirectory(nodeData.data?.classData || nodeData.data);
-    } else if (nodeType === 'class') {
-      openErdChart(nodeData.data?.classData || nodeData.data);
+  collectParents(classId);
+
+  if (activeLeafName.value) {
+    props.initialNodes.forEach(n => {
+      const hasProp = n.data?.properties?.some((p: any) => p.name === activeLeafName.value);
+      const hasMeth = n.data?.methods?.some((m: any) => m.name === activeLeafName.value);
+      if (hasProp || hasMeth) {
+        collectParents(n.id);
+      }
+    });
+  }
+
+  const relatedIds = new Set<string>();
+  const activeLower = classId.toLowerCase();
+  props.initialEdges.forEach(e => {
+    if (e.source.toLowerCase() === activeLower) {
+      relatedIds.add(e.target);
+    } else if (e.target.toLowerCase() === activeLower) {
+      relatedIds.add(e.source);
     }
   });
 
-  // Canvas click
-  graph.on(CanvasEvent.CLICK, () => {
-    clearHighlight();
-    emit('select-class', null);
-    emit('select-node', null);
+  relatedIds.forEach(relId => {
+    collectParents(relId);
   });
 
-  // Viewport change (pan/zoom)
-  graph.on(GraphEvent.AFTER_TRANSFORM, () => {
-    handleViewportChange();
-  });
+  expandedNodes.value = keepers;
+}
 
-  // ── Drag-children feature (move descendants with parent) ──
-  let dragStartCanvasX = 0;
-  let dragStartCanvasY = 0;
-  let childStartPositions: Array<{ id: string; x: number; y: number }> = [];
-
-  function getDescendantIds(parentId: string): string[] {
-    const descendants: string[] = [];
-    const queue = [parentId];
-    const visited = new Set<string>([parentId]);
-    while (queue.length > 0) {
-      const currId = queue.shift()!;
-      const edges = graph!.getEdgeData() as any[];
-      edges.forEach((edge: any) => {
-        const isStructural = edge.id.startsWith('edge-') || edge.id.startsWith('de-');
-        if (isStructural && edge.source === currId && !visited.has(edge.target)) {
-          visited.add(edge.target);
-          descendants.push(edge.target);
-          queue.push(edge.target);
-        }
-      });
-    }
-    return descendants;
-  }
-
-  graph.on(NodeEvent.DRAG_START, (event: any) => {
-    const id = event.target?.id;
-    if (!id) return;
-    dragStartCanvasX = event.canvas?.x ?? event.x ?? 0;
-    dragStartCanvasY = event.canvas?.y ?? event.y ?? 0;
-
-    const descendantIds = getDescendantIds(id);
-    childStartPositions = descendantIds.map(childId => {
-      const nd = graph!.getNodeData(childId) as any;
-      return { id: childId, x: nd?.style?.x ?? 0, y: nd?.style?.y ?? 0 };
-    });
-  });
-
-  graph.on(NodeEvent.DRAG, (event: any) => {
-    if (!childStartPositions.length) return;
-    const currentCanvasX = event.canvas?.x ?? event.x ?? 0;
-    const currentCanvasY = event.canvas?.y ?? event.y ?? 0;
-    const zoom = graph!.getZoom();
-    const graphDx = (currentCanvasX - dragStartCanvasX) / zoom;
-    const graphDy = (currentCanvasY - dragStartCanvasY) / zoom;
-
-    graph!.updateNodeData(
-      childStartPositions.map(child => ({
-        id: child.id,
-        style: { x: child.x + graphDx, y: child.y + graphDy },
-      }))
-    );
-    graph!.draw();
-  });
-
-  graph.on(NodeEvent.DRAG_END, () => {
-    dragStartCanvasX = 0; dragStartCanvasY = 0;
-    childStartPositions = [];
-  });
-};
-
-// ──────────────────────────────────────────────
-// State Management
-// ──────────────────────────────────────────────
-const computeRelatedNodes = () => {
-  relatedNodeIds.value = new Set();
-  if (activeNodeId.value) {
-    const activeId = activeNodeId.value;
-    props.initialEdges.forEach(e => {
-      if (e.source.toLowerCase() === activeId.toLowerCase()) relatedNodeIds.value.add(e.target);
-      else if (e.target.toLowerCase() === activeId.toLowerCase()) relatedNodeIds.value.add(e.source);
-    });
-  }
-};
+const vis = (v: string) => v === 'private' ? '−' : v === 'protected' ? '#' : '+';
 
 function highlightNode(classId: string) {
   const n = props.initialNodes.find(x => x.id.toLowerCase() === classId.toLowerCase());
@@ -1222,353 +1276,476 @@ function clearHighlight() {
   store.setHoveredMethod('');
 }
 
-function expandParentsForClass(classId: string) {
-  const node = props.initialNodes.find(x => x.id.toLowerCase() === classId.toLowerCase());
-  if (!node) return;
-  const fp = (node.data?.filePath || node.filePath || '').replace(/\\/g, '/');
-  const parts = fp.split('/');
-  let pathAccumulator = '';
-  parts.slice(0, -1).forEach((part: string) => {
-    pathAccumulator = pathAccumulator ? `${pathAccumulator}/${part}` : part;
-    expandedNodes.value.add(`dir-${pathAccumulator}`);
-  });
-}
-
-function expandRelatedFolders(classId: string) {
-  const keepers = new Set<string>();
-  keepers.add('mm-root');
-
-  const collectParents = (id: string) => {
-    const node = props.initialNodes.find(x => x.id.toLowerCase() === id.toLowerCase());
-    if (!node) return;
-    const fp = (node.data?.filePath || node.filePath || '').replace(/\\/g, '/');
-    const parts = fp.split('/');
-    let acc = '';
-    parts.slice(0, -1).forEach((part: string) => {
-      acc = acc ? `${acc}/${part}` : part;
-      keepers.add(`dir-${acc}`);
-    });
-  };
-
-  collectParents(classId);
-
-  if (activeLeafName.value) {
-    props.initialNodes.forEach(n => {
-      const hasProp = n.data?.properties?.some((p: any) => p.name === activeLeafName.value);
-      const hasMeth = n.data?.methods?.some((m: any) => m.name === activeLeafName.value);
-      if (hasProp || hasMeth) collectParents(n.id);
-    });
-  }
-
-  const relatedIds = new Set<string>();
-  const activeLower = classId.toLowerCase();
-  props.initialEdges.forEach(e => {
-    if (e.source.toLowerCase() === activeLower) relatedIds.add(e.target);
-    else if (e.target.toLowerCase() === activeLower) relatedIds.add(e.source);
-  });
-  relatedIds.forEach(relId => collectParents(relId));
-
-  expandedNodes.value = keepers;
-}
-
-const vis = (v: string) => v === 'private' ? '−' : v === 'protected' ? '#' : '+';
-
-// ──────────────────────────────────────────────
-// Viewport change / Auto LOD
-// ──────────────────────────────────────────────
-let viewportTimeout: any = null;
-const handleViewportChange = () => {
-  if (viewportTimeout) clearTimeout(viewportTimeout);
-  viewportTimeout = setTimeout(() => {
-    if (!graph || !props.initialNodes?.length) return;
-    if (activeNodeId.value) return;
-    if (!autoLOD.value) return;
-
-    const zoom = graph.getZoom();
-    let changed = false;
-
-    const allNodeData = graph.getNodeData() as any[];
-    allNodeData.forEach((nodeData: any) => {
-      const nodeType = nodeData.data?.nodeType;
-      if (nodeType !== 'directory') return;
-      const id = nodeData.id;
-      const nodeDepth = nodeData.data?.depth ?? 0;
-      const isExpanded = expandedNodes.value.has(id);
-      let shouldBeExpanded = isExpanded;
-
-      if (zoom > 0.7) shouldBeExpanded = true;
-      else if (zoom > 0.5) shouldBeExpanded = nodeDepth < 3;
-      else if (zoom > 0.3) shouldBeExpanded = nodeDepth < 2;
-      else shouldBeExpanded = nodeDepth < 1;
-
-      if (shouldBeExpanded !== isExpanded) {
-        if (shouldBeExpanded) expandedNodes.value.add(id);
-        else expandedNodes.value.delete(id);
-        changed = true;
+function computeRelatedNodes() {
+  relatedNodeIds.value = new Set();
+  if (activeNodeId.value) {
+    const activeId = activeNodeId.value;
+    props.initialEdges.forEach(e => {
+      if (e.source.toLowerCase() === activeId.toLowerCase()) {
+        relatedNodeIds.value.add(e.target);
+      } else if (e.target.toLowerCase() === activeId.toLowerCase()) {
+        relatedNodeIds.value.add(e.source);
       }
     });
-
-    if (changed) {
-      expandedNodes.value = new Set(expandedNodes.value);
-      applyLayout(props.initialNodes);
-    }
-  }, 200);
-};
-
-const toggleAutoLOD = () => {
-  autoLOD.value = !autoLOD.value;
-  if (autoLOD.value) handleViewportChange();
-};
-
-// ──────────────────────────────────────────────
-// Initial Expansion
-// ──────────────────────────────────────────────
-function initInitialExpansion(rawNodes: any[]) {
-  expandedNodes.value.clear();
-  expandedNodes.value.add('mm-root');
-  if (!rawNodes || rawNodes.length === 0) return;
-
-  if (props.mode === 'directory') {
-    const root = rawNodes[0];
-    buildDirGraph(root);
-    expandedNodes.value.add(root._id);
-    const queue: any[] = [];
-    if (root.children) queue.push(...root.children);
-    let totalNodes = 1 + (root.children?.length || 0) + (root.files?.length || 0);
-    while (queue.length > 0 && totalNodes < MAX_DEFAULT_NODES) {
-      const current = queue.shift();
-      if (current && current.isFolder) {
-        expandedNodes.value.add(current._id);
-        totalNodes += (current.children?.length || 0) + (current.files?.length || 0);
-        if (current.children) queue.push(...current.children);
-      }
-    }
-  } else {
-    const rootTree = buildClassTree(rawNodes, null, null, []);
-    const queue: TreeNode[] = [];
-    if (rootTree.children) queue.push(...rootTree.children);
-    let totalNodes = 1 + rootTree.children.length;
-    while (queue.length > 0 && totalNodes < MAX_DEFAULT_NODES) {
-      const current = queue.shift();
-      if (current && current.type === 'directory') {
-        expandedNodes.value.add(current.id);
-        totalNodes += current.children.length;
-        queue.push(...current.children);
-      }
-    }
   }
 }
 
-// ──────────────────────────────────────────────
-// Expand All
-// ──────────────────────────────────────────────
-const expandAllNodes = () => {
-  expandedNodes.value.clear();
-  expandedNodes.value.add('mm-root');
+async function applyLayout(raw: any[]) {
+  if (!raw?.length) {
+    if (graph) graph.clear();
+    return;
+  }
 
-  if (props.mode === 'directory') {
-    const root = props.initialNodes[0];
-    if (!root) return;
-    const addFolderIds = (node: any) => {
-      if (node._id) expandedNodes.value.add(node._id);
-      if (node.children) node.children.forEach((c: any) => { if (c.isFolder) addFolderIds(c); });
+  computeRelatedNodes();
+
+  const res = props.mode === 'directory' ? buildDirGraph(raw[0]) : buildClassGraph(raw);
+  
+  // Convert layout nodes to G6 schema
+  const g6Nodes = res.nodes.map(n => {
+    const isNodeActive = activeNodeId.value === n.id;
+    const isNodeRelated = relatedNodeIds.value.has(n.id);
+    const isDimmed = activeNodeId.value && !isNodeActive && !isNodeRelated && n.id !== 'mm-root';
+
+    let relType: string | undefined = undefined;
+    if (isNodeRelated && activeNodeId.value) {
+      const activeId = activeNodeId.value.toLowerCase();
+      const edge = props.initialEdges.find(e => 
+        (e.source.toLowerCase() === activeId && e.target.toLowerCase() === n.id.toLowerCase()) ||
+        (e.target.toLowerCase() === activeId && e.source.toLowerCase() === n.id.toLowerCase())
+      );
+      if (edge) {
+        relType = edge.data?.type || 'uses';
+      }
+    }
+
+    let nodeType = 'class';
+    if (n.type === 'customDirectory') nodeType = 'directory';
+    else if (n.type === 'customLeaf') nodeType = 'leaf';
+
+    return {
+      id: n.id,
+      // In custom tree mode, nodes are centered on their coordinates
+      x: n.position.x + (n.data?.width || 200) / 2,
+      y: n.position.y + (n.data?.height || 42) / 2,
+      name: n.data.name,
+      filePath: n.data.filePath,
+      nodeType,
+      isRoot: n.data.isRoot,
+      isMethod: n.data.isMethod,
+      isMore: n.data.isMore,
+      nameOnly: n.data.nameOnly,
+      isHighlighted: n.data.isHighlighted || isNodeActive,
+      isExpanded: expandedNodes.value.has(n.id),
+      isDimmed,
+      relType,
+      branchColor: n.data.branchColor,
+      width: n.data.width || (nodeType === 'leaf' ? 160 : 200),
+      height: n.data.height || (nodeType === 'leaf' ? 26 : 42),
+      folderDepth: n.data?.depth ?? n.depth ?? 0,
+      depth: n.data?.depth ?? n.depth ?? 0,
+      data: n.data,
     };
-    addFolderIds(root);
-  } else {
-    props.initialNodes.forEach((n: any) => {
-      const fp = (n.data?.filePath || n.filePath || '').replace(/\\/g, '/');
-      const parts = fp.split('/');
-      let pathAccumulator = '';
-      parts.slice(0, -1).forEach((part: string) => {
-        pathAccumulator = pathAccumulator ? `${pathAccumulator}/${part}` : part;
-        expandedNodes.value.add(`dir-${pathAccumulator}`);
-      });
-    });
-  }
-
-  expandedNodes.value = new Set(expandedNodes.value);
-  applyLayout(props.initialNodes);
-  nextTick(() => { if (graph) graph.fitView({ padding: [40] }); });
-};
-
-// ──────────────────────────────────────────────
-// Search
-// ──────────────────────────────────────────────
-const allSearchableItems = computed(() => {
-  const items: Array<{ id: string; name: string; type: 'class' | 'directory'; detail: string }> = [];
-  props.initialNodes.forEach((n: any) => {
-    if (n.data?.name) {
-      items.push({ id: n.id, name: n.data.name, type: 'class', detail: n.data.filePath || '' });
-    }
   });
-  const dirs = new Set<string>();
-  props.initialNodes.forEach((n: any) => {
-    const fp = (n.data?.filePath || n.filePath || '').replace(/\\/g, '/');
-    const parts = fp.split('/');
-    let acc = '';
-    parts.slice(0, -1).forEach((part: string) => {
-      acc = acc ? `${acc}/${part}` : part;
-      dirs.add(acc);
-    });
-  });
-  dirs.forEach(dirPath => {
-    items.push({
-      id: `dir-${dirPath}`,
-      name: dirPath.split('/').pop() || dirPath,
-      type: 'directory',
-      detail: dirPath
-    });
-  });
-  return items;
-});
 
-const querySearch = (queryString: string, cb: any) => {
-  const query = queryString.toLowerCase().trim();
-  const results = query
-    ? allSearchableItems.value.filter(item =>
-        item.name.toLowerCase().includes(query) || item.detail.toLowerCase().includes(query)
-      )
-    : allSearchableItems.value.slice(0, 5);
-  cb(results);
-};
-
-const handleSearchSelect = (item: any) => {
-  if (item.type === 'class') {
-    focusNode(item.id);
-  } else if (item.type === 'directory') {
-    expandedNodes.value.add(item.id);
-    applyLayout(props.initialNodes);
-    nextTick(() => {
-      if (graph) {
-        try { (graph as any).focusElement?.(item.id, { animation: { duration: 500 } }); } catch {}
+  const g6Edges = res.edges.map(e => {
+    const isLeafEdge = e.id.includes('-prop-') || e.id.includes('-meth-') || e.id.includes('-more');
+    const isLeafLink = e.id.startsWith('leaf-link-');
+    
+    let isRel = true;
+    if (activeNodeId.value) {
+      if (isLeafLink) {
+        isRel = true;
+      } else if (isLeafEdge) {
+        if (activeLeafName.value) {
+          const hasMatchingLeafNode = e.target.endsWith('-prop-' + activeLeafName.value) || e.target.endsWith('-meth-' + activeLeafName.value);
+          isRel = hasMatchingLeafNode && (e.source === activeNodeId.value || relatedNodeIds.value.has(e.source));
+        } else {
+          isRel = (e.source === activeNodeId.value);
+        }
+      } else {
+        const isTreeEdgeForActive = e.source === activeNodeId.value || e.target === activeNodeId.value || 
+                                    e.source === 'mm-root' || e.target === 'mm-root';
+        const isRelationshipEdgeForActive = 
+          (e.source.toLowerCase() === activeNodeId.value.toLowerCase() || e.target.toLowerCase() === activeNodeId.value.toLowerCase()) && 
+          !e.id.startsWith('edge-');
+        isRel = isTreeEdgeForActive || isRelationshipEdgeForActive;
       }
-      activeNodeId.value = null;
-      emit('select-node', item.id);
-    });
-  }
-};
-
-const focusNode = (nodeId: string) => {
-  if (!graph) return;
-  expandParentsForClass(nodeId);
-  applyLayout(props.initialNodes);
-  nextTick(() => {
-    if (graph) {
-      try { (graph as any).focusElement?.(nodeId, { animation: { duration: 500 } }); } catch {}
-      highlightNode(nodeId);
     }
+
+    const color = e.style?.stroke || '#8F9CAE';
+    const lineDash = e.style?.strokeDasharray ? [4, 4] : undefined;
+
+    // Determine target markers/arrows for inheritance and implementations
+    let endArrow: any = undefined;
+    const isUmlRel = !e.id.startsWith('edge-') && e.data?.type;
+    if (isUmlRel && isRel) {
+      const type = e.data.type;
+      const markerColor = type === 'extends' ? '#FFB800' : (type === 'implements' ? '#00E0FF' : '#8F9CAE');
+      endArrow = {
+        path: G6.Arrow.triangle(8, 8, 4),
+        fill: markerColor,
+        stroke: markerColor,
+      };
+    }
+
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      // cubic-horizontal for folder structure branches, line for logical references
+      type: e.id.startsWith('edge-') ? 'cubic-horizontal' : 'line',
+      style: {
+        stroke: color,
+        lineWidth: isRel ? (isLeafLink ? 2.2 : 2.0) : 0.8,
+        lineDash,
+        opacity: isRel ? 0.85 : 0.08,
+        endArrow,
+      },
+    };
   });
-};
 
-const focusVulnerabilities = () => {
-  if (store.vulnerableNodes?.length > 0) focusNode(store.vulnerableNodes[0]);
-};
+  if (graph) {
+    if (currentLayoutMode.value === 'neural' && props.mode === 'class') {
+      // In force-directed neural mode, strip coordinates and let G6 solve positions
+      const forceNodes = g6Nodes.map(n => ({
+        ...n,
+        x: undefined,
+        y: undefined,
+        // Make nodes slightly smaller in force layout
+        width: 140,
+        height: 34,
+      }));
+      graph.changeData({ nodes: forceNodes, edges: g6Edges });
+    } else {
+      graph.changeData({ nodes: g6Nodes, edges: g6Edges });
+      if (isInitialLoad) {
+        graph.fitView(40);
+        isInitialLoad = false;
+      }
+    }
+  }
+}
 
-// ──────────────────────────────────────────────
-// Layer / Layout Switching
-// ──────────────────────────────────────────────
-const toggleLayersMenu = () => { layersMenuOpen.value = !layersMenuOpen.value; };
-const selectLayer = (layout: 'mindmap' | 'neural') => { switchLayout(layout); layersMenuOpen.value = false; };
-const closeLayersMenu = (e: MouseEvent) => {
-  const target = e.target as HTMLElement;
-  if (!target.closest('.google-layers-switcher')) layersMenuOpen.value = false;
-};
-
-const switchLayout = async (newLayout: 'mindmap' | 'neural') => {
+const switchLayout = (newLayout: 'mindmap' | 'neural') => {
   currentLayoutMode.value = newLayout;
   if (!graph) return;
 
   if (newLayout === 'neural') {
-    // Build full graph data first
-    const res = props.mode === 'directory'
-      ? buildDirGraph(props.initialNodes[0])
-      : buildClassGraph(props.initialNodes);
-
-    computeRelatedNodes();
-    const g6Nodes = toG6Nodes(res);
-    const g6Edges = toG6Edges(res);
-
-    graph.setData({ nodes: g6Nodes, edges: g6Edges });
-
-    // Use fruchterman force layout for organic radial spread
-    graph.setLayout({
-      type: 'fruchterman',
-      gravity: 1,
-      speed: 5,
-      clustering: false,
-      maxIteration: 1000,
+    graph.updateLayout({
+      type: 'force',
       preventOverlap: true,
-      nodeSize: 50,
-    } as any);
-
-    await graph.render();
-    await graph.fitView({ padding: [60] });
+      nodeSpacing: (node: any) => {
+        const nodeType = node.nodeType ?? node.data?.nodeType;
+        if (nodeType === 'directory') return 30; // Extra padding for directories
+        if (nodeType === 'leaf') return 8;       // Tight padding for leaves
+        return 20;                              // Padding for classes
+      },
+      linkDistance: (edge: any) => {
+        const src = edge.source || '';
+        const tgt = edge.target || '';
+        
+        const isSrcDir = src.startsWith('dir-') || src.startsWith('dt-') || src === 'mm-root';
+        const isTgtDir = tgt.startsWith('dir-') || tgt.startsWith('dt-') || tgt === 'mm-root';
+        
+        const isSrcLeaf = src.includes('-prop-') || src.includes('-meth-') || src.includes('-more');
+        const isTgtLeaf = tgt.includes('-prop-') || tgt.includes('-meth-') || tgt.includes('-more');
+        
+        if (isSrcDir && isTgtDir) {
+          return 220; // Directory-to-directory: main trunk / long branches
+        } else if (isSrcLeaf || isTgtLeaf) {
+          return 45;  // Leaf nodes: short twigs close to class
+        } else if (isSrcDir || isTgtDir) {
+          return 120; // Directory-to-class: branch
+        } else {
+          return 160; // Class-to-class relationships
+        }
+      },
+      nodeStrength: (node: any) => {
+        const nodeType = node.nodeType ?? node.data?.nodeType;
+        if (node.id === 'mm-root') return -800;    // Center project root repels very strongly
+        if (nodeType === 'directory') return -400; // Folders repel strongly to separate branches
+        if (nodeType === 'leaf') return -30;       // Leaves have very low repulsion
+        return -150;                               // Classes have moderate repulsion
+      },
+      edgeStrength: (edge: any) => {
+        const src = edge.source || '';
+        const tgt = edge.target || '';
+        
+        const isSrcDir = src.startsWith('dir-') || src.startsWith('dt-') || src === 'mm-root';
+        const isTgtDir = tgt.startsWith('dir-') || tgt.startsWith('dt-') || tgt === 'mm-root';
+        
+        const isSrcLeaf = src.includes('-prop-') || src.includes('-meth-') || src.includes('-more');
+        const isTgtLeaf = tgt.includes('-prop-') || tgt.includes('-meth-') || tgt.includes('-more');
+        
+        if (isSrcLeaf || isTgtLeaf) {
+          return 1.0;  // Leaf nodes strictly hug their parent class
+        } else if (isSrcDir && isTgtDir) {
+          return 0.8;  // Directory trunk edges are structural
+        } else if (isSrcDir || isTgtDir) {
+          return 0.6;  // Class-directory edges are moderately strong
+        } else {
+          return 0.15; // Weak relationship edges so clusters don't pull each other together
+        }
+      },
+      nodeSize: [140, 34],
+    });
   } else {
-    // Switch back to preset (mindmap) layout
-    graph.setLayout({ type: 'preset' } as any);
-    isInitialLoad = true; // Force fitView on next render
-    await applyLayout(props.initialNodes);
+    // Disable force physics simulation
+    graph.updateLayout({
+      type: undefined,
+    });
   }
+  applyLayout(props.initialNodes);
 };
 
-// ──────────────────────────────────────────────
-// Focus / Highlight toggles
-// ──────────────────────────────────────────────
-const toggleFocus = () => { emit('update:isFocusMode', !props.isFocusMode); };
+const initG6Graph = () => {
+  if (!graphContainer.value) return;
 
-// ──────────────────────────────────────────────
-// Zoom Controls (v5 API)
-// ──────────────────────────────────────────────
-const zoomIn = async () => {
-  if (!graph) return;
-  const [w, h] = graph.getSize();
-  await graph.zoomBy(1.2, false, { x: w / 2, y: h / 2 });
-};
+  const width = graphContainer.value.clientWidth || 800;
+  const height = graphContainer.value.clientHeight || 550;
 
-const zoomOut = async () => {
-  if (!graph) return;
-  const [w, h] = graph.getSize();
-  await graph.zoomBy(0.8, false, { x: w / 2, y: h / 2 });
-};
+  const isDark = document.documentElement.classList.contains('dark');
 
-const resetView = async () => {
-  if (!graph) return;
-  await graph.fitView({ padding: [40] });
-};
+  graph = new G6.Graph({
+    container: graphContainer.value,
+    width,
+    height,
+    fitView: true,
+    fitViewPadding: 40,
+    modes: {
+      default: ['drag-canvas', 'zoom-canvas', 'drag-node'],
+    },
+    defaultNode: {
+      type: 'custom-g6-node',
+    },
+    defaultEdge: {
+      type: 'cubic-horizontal',
+      style: {
+        stroke: isDark ? '#475569' : '#CBD5E1',
+        lineWidth: 1.5,
+      },
+    },
+  });
 
-// ──────────────────────────────────────────────
-// Fisheye Toggle (G6 v5 plugin)
-// ──────────────────────────────────────────────
-const FISHEYE_KEY = 'mindmap-fisheye';
-
-const toggleFisheye = () => {
-  if (!graph) return;
-  fisheyeEnabled.value = !fisheyeEnabled.value;
-
-  try {
-    if (fisheyeEnabled.value) {
-      (graph as any).addPlugins?.([{
-        key: FISHEYE_KEY,
-        type: 'fisheye',
-        r: 200,
-        d: 2,
-        trigger: 'pointermove',
-        showDPercent: false,
-      }]);
-    } else {
-      (graph as any).removePlugins?.([FISHEYE_KEY]);
+  // G6 Event Listeners
+  graph.on('node:click', (evt: any) => {
+    const item = evt.item;
+    if (!item) return;
+    const model = item.getModel() as any;
+    
+    if (model.nodeType === 'leaf') {
+      if (model.isMore) return;
+      const nameOnly = model.nameOnly;
+      if (nameOnly) {
+        activeLeafName.value = activeLeafName.value === nameOnly ? null : nameOnly;
+      }
+    } else if (model.nodeType === 'class') {
+      if (model.isRoot) {
+        clearHighlight();
+        emit('select-class', null);
+      } else {
+        activeLeafName.value = null;
+        highlightNode(model.id);
+        expandRelatedFolders(model.id);
+      }
+    } else if (model.nodeType === 'directory') {
+      clearHighlight();
+      emit('select-node', model.data);
+      
+      // Toggle expand/collapse state
+      if (expandedNodes.value.has(model.id)) {
+        expandedNodes.value.delete(model.id);
+      } else {
+        expandedNodes.value.add(model.id);
+      }
+      expandedNodes.value = new Set(expandedNodes.value);
+      applyLayout(props.initialNodes);
     }
-  } catch (e) {
-    console.warn('[Mindmap] Fisheye plugin error:', e);
-    fisheyeEnabled.value = false;
+  });
+
+  graph.on('node:dblclick', (evt: any) => {
+    const item = evt.item;
+    if (!item) return;
+    const model = item.getModel() as any;
+    
+    if (model.nodeType === 'directory') {
+      enterDirectory(model.data);
+    } else if (model.nodeType === 'class') {
+      openErdChart(model.data);
+    }
+  });
+
+  graph.on('canvas:click', () => {
+    clearHighlight();
+    emit('select-class', null);
+    emit('select-node', null);
+  });
+
+  graph.on('viewportchange', () => {
+    handleViewportChange();
+  });
+
+  graph.on('canvas:dragend', () => {
+    handleViewportChange();
+  });
+
+  // Drag-descendants feature (drag parent moves children)
+  let dragStartPos: { x: number, y: number } | null = null;
+  let childStartPositions: Array<{ item: any, x: number, y: number }> = [];
+
+  function getDescendantIds(g: any, parentId: string): string[] {
+    const descendants: string[] = [];
+    const queue = [parentId];
+    while (queue.length > 0) {
+      const currId = queue.shift()!;
+      const edges = g.getEdges();
+      edges.forEach((edge: any) => {
+        const model = edge.getModel();
+        const isStructural = model.id.startsWith('edge-') || model.id.startsWith('de-');
+        if (isStructural && model.source === currId) {
+          descendants.push(model.target);
+          queue.push(model.target);
+        }
+      });
+    }
+    return descendants;
   }
+
+  graph.on('node:dragstart', (evt: any) => {
+    const item = evt.item;
+    if (!item) return;
+    const model = item.getModel();
+    dragStartPos = { x: evt.x, y: evt.y };
+    
+    const descendantIds = getDescendantIds(graph, model.id);
+    childStartPositions = [];
+    descendantIds.forEach((id: string) => {
+      const childItem = graph.findById(id);
+      if (childItem) {
+        const childModel = childItem.getModel();
+        childStartPositions.push({
+          item: childItem,
+          x: childModel.x,
+          y: childModel.y
+        });
+      }
+    });
+  });
+
+  graph.on('node:drag', (evt: any) => {
+    if (!dragStartPos || !childStartPositions.length) return;
+    const dx = evt.x - dragStartPos.x;
+    const dy = evt.y - dragStartPos.y;
+    childStartPositions.forEach((child: any) => {
+      const { item, x, y } = child;
+      graph.updateItem(item, {
+        x: x + dx,
+        y: y + dy
+      });
+    });
+  });
+
+  graph.on('node:dragend', () => {
+    dragStartPos = null;
+    childStartPositions = [];
+  });
 };
 
 // ──────────────────────────────────────────────
-// Directory navigation
+// Watching Props Changes
 // ──────────────────────────────────────────────
+watch(() => props.initialNodes, (raw) => {
+  isInitialLoad = true;
+  if (raw && raw.length > 0) {
+    initInitialExpansion(raw);
+  }
+  applyLayout(raw);
+}, { deep: true });
+
+watch(() => props.initialEdges, () => {
+  if (props.mode !== 'directory' && props.initialNodes?.length) {
+    applyLayout(props.initialNodes);
+  }
+});
+
+watch(activeNodeId, (newId) => {
+  if (newId) {
+    if (!savedExpandedNodes.value) {
+      savedExpandedNodes.value = new Set(expandedNodes.value);
+    }
+    expandRelatedFolders(newId);
+  } else {
+    if (savedExpandedNodes.value) {
+      expandedNodes.value = new Set(savedExpandedNodes.value);
+      savedExpandedNodes.value = null;
+    }
+  }
+  if (props.initialNodes?.length) applyLayout(props.initialNodes);
+});
+
+watch(activeLeafName, (newLeaf) => {
+  if (store.selectedMethod !== (newLeaf || '')) {
+    store.setSelectedMethod(newLeaf || '');
+  }
+  if (activeNodeId.value) {
+    expandRelatedFolders(activeNodeId.value);
+  }
+  if (props.initialNodes?.length) applyLayout(props.initialNodes);
+});
+
+watch(() => store.selectedMethod, (newVal) => {
+  if (activeLeafName.value !== (newVal || null)) {
+    activeLeafName.value = newVal || null;
+  }
+});
+
+watch(() => props.highlightClass, cls => {
+  if (cls) {
+    highlightNode(cls);
+    expandRelatedFolders(cls);
+    nextTick(() => {
+      const item = graph?.findById(cls);
+      if (item) {
+        graph.focusItem(item, true, {
+          easing: 'easeCubic',
+          duration: 500,
+        });
+      }
+    });
+  } else {
+    clearHighlight();
+  }
+});
+
+// ──────────────────────────────────────────────
+// Zoom & Fit Controls
+// ──────────────────────────────────────────────
+const zoomIn = () => {
+  if (graph) {
+    const zoom = graph.getZoom();
+    const width = graph.getWidth();
+    const height = graph.getHeight();
+    graph.zoomTo(zoom * 1.2, { x: width / 2, y: height / 2 });
+  }
+};
+
+const zoomOut = () => {
+  if (graph) {
+    const zoom = graph.getZoom();
+    const width = graph.getWidth();
+    const height = graph.getHeight();
+    graph.zoomTo(zoom * 0.8, { x: width / 2, y: height / 2 });
+  }
+};
+
+const resetView = () => {
+  if (graph) {
+    graph.fitView(40);
+  }
+};
+
 const enterDirectory = (data: any) => {
-  if (data?.fullPath) {
+  if (data.fullPath) {
     const encoded = data.fullPath.replace(/\//g, '_');
     router.push('/' + store.activeConnection + '/explorer/' + encoded);
   }
@@ -1588,23 +1765,17 @@ const toggleFullscreen = () => {
   }
 };
 
-// ──────────────────────────────────────────────
-// Window Resize
-// ──────────────────────────────────────────────
 const handleWindowResize = () => {
   if (graph && graphContainer.value) {
-    const width  = graphContainer.value.clientWidth;
+    const width = graphContainer.value.clientWidth;
     const height = graphContainer.value.clientHeight;
-    graph.setSize(width, height);
+    graph.changeSize(width, height);
   }
   if (erdVisible.value) drawErdLines();
 };
 
 let _resizeObs: ResizeObserver | null = null;
 
-// ──────────────────────────────────────────────
-// Lifecycle
-// ──────────────────────────────────────────────
 onMounted(() => {
   initG6Graph();
 
@@ -1616,13 +1787,14 @@ onMounted(() => {
 
   applyLayout(props.initialNodes);
 
+  // ResizeObserver to handle container size changes (e.g. when tab becomes active)
   if (graphContainer.value) {
     _resizeObs = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0 && graph) {
-          graph.setSize(width, height);
-          graph.fitView({ padding: [40] });
+          graph.changeSize(width, height);
+          graph.fitView(40);
         }
       }
     });
@@ -1631,7 +1803,9 @@ onMounted(() => {
 
   _themeObs = new MutationObserver(() => {
     isDarkRef.value = document.documentElement.classList.contains('dark');
-    if (graph) applyLayout(props.initialNodes);
+    if (graph) {
+      applyLayout(props.initialNodes);
+    }
   });
   _themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
@@ -1648,62 +1822,11 @@ onUnmounted(() => {
   window.removeEventListener('click', closeLayersMenu);
   if (graph) {
     graph.destroy();
-    graph = null;
   }
 });
 
 // ──────────────────────────────────────────────
-// Watchers
-// ──────────────────────────────────────────────
-watch(() => props.initialNodes, (raw) => {
-  isInitialLoad = true;
-  if (raw && raw.length > 0) initInitialExpansion(raw);
-  applyLayout(raw);
-}, { deep: true });
-
-watch(() => props.initialEdges, () => {
-  if (props.mode !== 'directory' && props.initialNodes?.length) applyLayout(props.initialNodes);
-});
-
-watch(activeNodeId, (newId) => {
-  if (newId) {
-    if (!savedExpandedNodes.value) savedExpandedNodes.value = new Set(expandedNodes.value);
-    expandRelatedFolders(newId);
-  } else {
-    if (savedExpandedNodes.value) {
-      expandedNodes.value = new Set(savedExpandedNodes.value);
-      savedExpandedNodes.value = null;
-    }
-  }
-  if (props.initialNodes?.length) applyLayout(props.initialNodes);
-});
-
-watch(activeLeafName, (newLeaf) => {
-  if (store.selectedMethod !== (newLeaf || '')) store.setSelectedMethod(newLeaf || '');
-  if (activeNodeId.value) expandRelatedFolders(activeNodeId.value);
-  if (props.initialNodes?.length) applyLayout(props.initialNodes);
-});
-
-watch(() => store.selectedMethod, (newVal) => {
-  if (activeLeafName.value !== (newVal || null)) activeLeafName.value = newVal || null;
-});
-
-watch(() => props.highlightClass, cls => {
-  if (cls) {
-    highlightNode(cls);
-    expandRelatedFolders(cls);
-    nextTick(() => {
-      if (graph) {
-        try { (graph as any).focusElement?.(cls, { animation: { duration: 500 } }); } catch {}
-      }
-    });
-  } else {
-    clearHighlight();
-  }
-});
-
-// ──────────────────────────────────────────────
-// ERD Dialog
+// ERD Dialog (Standard HTML/SVG rendering)
 // ──────────────────────────────────────────────
 const erdVisible    = ref(false);
 const erdClass      = ref<any>(null);
@@ -1796,6 +1919,13 @@ const drawErdLines = () => {
   display: flex;
   align-items: center;
 }
+
+/* :global(html.dark) .search-box-card {
+  background: rgba(30, 41, 59, 0.8) !important;
+  backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45) !important;
+} */
 
 .google-search-input {
   width: 100%;
@@ -1895,6 +2025,12 @@ const drawErdLines = () => {
   transition: all 0.2s;
 }
 
+/* :global(html.dark) .layers-button {
+  background: #1e293b;
+  border-color: #334155;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+} */
+
 .layers-button:hover {
   transform: scale(1.04);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
@@ -1911,16 +2047,27 @@ const drawErdLines = () => {
   font-weight: 700;
   text-align: center;
   padding: 3px 0;
+  /* color: var(--el-text-color-primary); */
+  /* background: rgba(0, 0, 0, 0.05); */
 }
 
 .layer-image {
   width: 100%;
   height: 60px;
+  /* border-radius: 6px; */
+  /* border: 2px solid transparent; */
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.5rem;
+  /* background: var(--bg-secondary, #f1f5f9); */
+  /* transition: all 0.2s;
+  box-sizing: border-box; */
 }
+
+/* :global(html.dark) .layer-label {
+  background: rgba(255, 255, 255, 0.05);
+} */
 
 .layers-popover {
   background: var(--el-bg-color-page);
@@ -1930,6 +2077,12 @@ const drawErdLines = () => {
   padding: 12px;
   width: 240px;
 }
+
+/* :global(html.dark) .layers-popover {
+  background: rgba(30, 41, 59, 0.95);
+  backdrop-filter: blur(8px);
+  border-color: rgba(255, 255, 255, 0.08);
+} */
 
 .popover-title {
   font-size: 0.78rem;
@@ -1963,9 +2116,14 @@ const drawErdLines = () => {
   align-items: center;
   justify-content: center;
   font-size: 1.5rem;
+  /* background: var(--bg-secondary, #f1f5f9); */
   transition: all 0.2s;
   box-sizing: border-box;
 }
+
+/* :global(html.dark) .option-image {
+  background: #334155;
+} */
 
 .layer-option:hover .option-image {
   border-color: var(--color-brand-light);

@@ -24,24 +24,25 @@ RUN npm run build
 FROM node:20-slim AS runner
 WORKDIR /app
 
-# Setup backend runtime dependencies and build sqlite3 from source to avoid GLIBC compatibility issues
+# Copy backend dependencies and built output
+COPY --from=backend-builder /app/backend/package*.json ./backend/
 WORKDIR /app/backend
-COPY backend/package*.json ./
-RUN apt-get update && apt-get install -y git ca-certificates python3 make g++ --no-install-recommends \
-    && npm ci --only=production \
-    && npm rebuild sqlite3 --build-from-source \
-    && apt-get purge -y python3 make g++ \
-    && apt-get autoremove -y \
+RUN npm install --omit=dev
+
+COPY --from=backend-builder /app/backend/dist ./dist
+
+# Copy compiled frontend to expected location
+COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
+
+# Setup backend runtime dependencies and build sqlite3 from source to avoid GLIBC compatibility issues
+# RUN apt-get update && apt-get install -y git ca-certificates
+RUN apt-get update && apt-get install -y \
+    git \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Trust system CA certificates for HTTPS git clone on Cloud Run
 ENV GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
-
-# Copy compiled backend code
-COPY --from=backend-builder /app/backend/dist ./dist
-
-# Copy compiled frontend assets
-COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
 # Expose default backend Express port (Cloud Run will override with $PORT env var)
 EXPOSE 5000
