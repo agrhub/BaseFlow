@@ -75,27 +75,42 @@ const coreFeatures: FeatureItem[] = [
     desc: 'Manage and test Git repository connection profiles. Supports local folder paths and remote repository configurations.'
   },
   {
-    key: 'explorer', color: 'cyan', icon: FolderOpened,
-    title: 'Directory & Class Explorer',
-    desc: 'Perform high-level project catalog audits. Browse folders and classes dynamically. Features a lightweight structure scanner that parses logical packages and source code units.'
+    key: 'mindmaps', color: 'purple', icon: Compass,
+    title: 'Interactive Codebase Mindmaps',
+    desc: 'Traverse folder structures visually using G6 Mindmap or Neural layouts. Search classes by name to center and focus nodes.'
   },
   {
-    key: 'editor', color: 'orange', icon: Document,
-    title: 'Class Inspector & Relations',
-    desc: 'Inspect logical class details, field declarations, and method signatures. Analyze inheritance paths, class relationships, and internal dependency links in the code.'
+    key: 'explorer', color: 'cyan', icon: FolderOpened,
+    title: 'Directory & Class Explorer',
+    desc: 'Browse logical file trees, inspect properties and methods lists, view syntax-highlighted source code, and trigger explain-code selection bubbles.'
   },
   {
     key: 'indexes', color: 'green', icon: Key,
     title: 'Git Commit & Activity Logs',
-    desc: 'Advanced repository activity monitor. View commit log timelines, author distributions, and file edit histories. Prevent technical debt by monitoring active repository states.'
+    desc: 'Monitor repository timelines, review commit distributions, and track line additions, deletions, and active changes.'
   }
 ];
 
 const aiFeatures: FeatureItem[] = [
   {
-    key: 'guardian', color: 'purple', icon: Compass,
-    title: 'BaseFlow AI SRE Assistant',
-    desc: 'Premium AI SRE automation copilot. Chat naturally to analyze repository schemas, request code visualizations, generate documentation, or ask the SRE SRE-specific performance questions.'
+    key: 'devops', color: 'red', icon: Document,
+    title: 'AI DevOps Workspace & Audits',
+    desc: 'Generate onboarding docs, DevOps reports, codebase security audits, and highlight vulnerable classes in red on the mindmap.'
+  },
+  {
+    key: 'architecture', color: 'blue', icon: Compass,
+    title: 'AI System Architecture Flows',
+    desc: 'Deconstruct class interactions and system architecture automatically, rendered into interactive Mermaid diagrams.'
+  },
+  {
+    key: 'playbooks', color: 'orange', icon: Document,
+    title: 'AI Document Playbooks',
+    desc: 'Browse Markdown files, ask chatbot queries contextually, and publish custom playbook agents directly to Copilot or Duo catalog.'
+  },
+  {
+    key: 'chatbot', color: 'purple', icon: Compass,
+    title: 'Conversational SRE Assistant',
+    desc: 'Sliding chatbot sidebar with context-aware suggestions, custom queries, code optimization triggers, and code copying.'
   }
 ];
 </script>

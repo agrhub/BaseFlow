@@ -58,7 +58,7 @@ const router = createRouter({
 });
 
 // Navigation Auth guard
-router.beforeEach(async (to, _from) => {
+router.beforeEach(async (to: any, _from: any) => {
   await store.fetchAuthStatus();
 
   // Set store active route tokens automatically

@@ -2,11 +2,11 @@
   <section class="hero-section">
     <div class="glowing-accent"></div>
     <h1 class="hero-title">
-      {{ store.t('Autonomous, Observability-First') }}
-      <span class="gradient-text"><br>{{ store.t('Git Repository Analyzer') }}</span>
+      {{ store.t('Understand, Visualise-First') }}
+      <span class="gradient-text"><br>{{ store.t('AI Codebase Analyzer') }}</span>
     </h1>
     <p class="hero-subtitle">
-      {{ store.t('Next-generation repository analysis integrated with Google Gemini SRE capability & Arize Phoenix OTel trace analytics.') }}
+      {{ store.t('Next-generation codebase analysis powered by Google Gemini ADK, GitLab Duo MCP, and GitHub MCP.') }}
     </p>
     <div class="hero-actions">
       <el-button type="primary" size="large" round class="hero-cta-btn" @click="emit('launch')">
