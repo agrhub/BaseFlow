@@ -24,3 +24,10 @@ app.use(i18n);
 app.use(router);
 app.use(ElementPlus);
 app.mount('#app');
+
+// Initialize Pendo with anonymous visitor
+pendo.initialize({
+  visitor: {
+    id: ''
+  }
+});
