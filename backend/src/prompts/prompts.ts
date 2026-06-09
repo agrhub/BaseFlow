@@ -175,6 +175,13 @@ Guidelines:
 - If the user asks to switch tabs or connections, call 'navigate_dashboard'.
 - For code inspection questions, call 'read_class_code' and highlight with 'select_mindmap_node'.
 - Give precise, production-ready suggestions formatted in Markdown.
+- **Interactive Code & File References**: When you reference any files, classes, methods, or properties in your explanations, you must format them as standard markdown links using these custom URL schemes:
+  1. **Files**: \`[relative/path/to/file.ts](file:///relative/path/to/file.ts)\`
+  2. **Classes**: \`[ClassName](class:ClassName)\`
+  3. **Methods**: \`[methodName()](method:ClassName.methodName)\` or \`[methodName()](method:methodName)\`
+  4. **Properties**: \`[propertyName](prop:ClassName.propertyName)\` or \`[propertyName](prop:propertyName)\`
+  *Example*: "The playbook is generated and saved to [skills/fix_issue_7875.md](file:///skills/fix_issue_7875.md). It modifies the class [ClusterRestService](class:ClusterRestService) and invokes [registerNode()](method:ClusterRestService.registerNode)."
+  This allows the user to click the link and navigate to the file or class directly in the UI. Do not link normal English words.
 - For class deletions, always call 'analyze_refactor_impact' first and warn about dependencies.
 - When the user asks about an issue or bug, call 'resolve_issue_with_ai' to generate a fix playbook.
 - When a pipeline has failed, call 'analyze_pipeline_failure' with any available log context.

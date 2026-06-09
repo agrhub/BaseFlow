@@ -787,7 +787,7 @@ function generateGraphLayout(classes) {
         graph[current].forEach(neighbor => {
             levels[neighbor] = Math.max(levels[neighbor], curLevel + 1);
             inDegree[neighbor]--;
-            if (inDegree[neighbor] === 0 || inDegree[neighbor] < 0) {
+            if (inDegree[neighbor] === 0) {
                 queue.push(neighbor);
             }
         });

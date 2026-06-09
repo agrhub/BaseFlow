@@ -68,7 +68,11 @@
           <div v-if="thinking" class="thinking-row">
             <div class="bubble-avatar">🤖</div>
             <div class="thinking-indicator">
-              <div class="thinking-pulse"></div>
+              <div class="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
               <span class="thinking-text">{{ store.t('BaseFlow is thinking...') }}</span>
             </div>
           </div>
@@ -791,12 +795,38 @@ const handleBlur = () => {
   border-bottom-left-radius: 2px;
 }
 
-.thinking-pulse {
-  width: 8px;
-  height: 8px;
-  background: var(--color-primary);
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.typing-indicator span {
+  width: 6px;
+  height: 6px;
+  background-color: var(--color-primary, #4facfe);
   border-radius: 50%;
-  animation: pulse-ring 1.2s infinite ease-in-out;
+  display: inline-block;
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.typing-indicator span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
 }
 
 .thinking-text {

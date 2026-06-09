@@ -33,8 +33,12 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.tempDir = void 0;
+exports.tempDir = exports.activeSyncPaths = void 0;
 exports.clearRepoCache = clearRepoCache;
+exports.downloadRepoZip = downloadRepoZip;
+exports.extractZipAndRename = extractZipAndRename;
+exports.zipCloneOrPull = zipCloneOrPull;
+exports.zipRefresh = zipRefresh;
 exports.parseGitUrl = parseGitUrl;
 exports.resolveRepoPath = resolveRepoPath;
 exports.getOrScanRepo = getOrScanRepo;
@@ -52,13 +56,16 @@ exports.getAuthenticatedGitUrl = getAuthenticatedGitUrl;
 exports.cloneRemoteRepo = cloneRemoteRepo;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const https = __importStar(require("https"));
 const simple_git_1 = require("simple-git");
+const child_process_1 = require("child_process");
 const GeminiService_1 = require("../services/GeminiService");
 const parser_1 = require("../utils/parser");
 const ConnectionStore_1 = require("../services/ConnectionStore");
 const tools_1 = require("../agent/tools");
 const prompts_1 = require("../prompts/prompts");
 const repoCache = new Map();
+exports.activeSyncPaths = new Map();
 function clearRepoCache(profileName) {
     console.log(`Clearing in-memory and disk cache for connection ${profileName}...`);
     repoCache.delete(profileName);
@@ -79,6 +86,433 @@ if (!fs.existsSync(exports.tempDir)) {
     }
     catch (e) {
         console.error(`Failed to create temp directory at ${exports.tempDir}:`, e.message || e);
+    }
+}
+// Helper to download repository ZIP from GitHub/GitLab using native https module to avoid fetch CORS headers (406 error)
+function downloadRepoZip(uri, destZipPath, options) {
+    const parsed = parseGitUrl(uri);
+    if (!parsed) {
+        throw new Error(`Invalid Git repository URL: ${uri}`);
+    }
+    const { provider, owner, repo, fullPath } = parsed;
+    const branch = options?.branch;
+    let url = '';
+    const headers = {
+        'User-Agent': 'BaseFlow',
+    };
+    const username = options?.gitUsername;
+    const token = options?.gitToken;
+    if (provider === 'github') {
+        url = branch
+            ? `https://api.github.com/repos/${owner}/${repo}/zipball/${encodeURIComponent(branch)}`
+            : `https://api.github.com/repos/${owner}/${repo}/zipball`;
+        if (token) {
+            headers['Authorization'] = `token ${token}`;
+        }
+    }
+    else if (provider === 'gitlab') {
+        url = branch
+            ? `https://gitlab.com/api/v4/projects/${encodeURIComponent(fullPath)}/repository/archive.zip?sha=${encodeURIComponent(branch)}`
+            : `https://gitlab.com/api/v4/projects/${encodeURIComponent(fullPath)}/repository/archive.zip`;
+        if (token) {
+            if (username === 'oauth2') {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            else {
+                headers['PRIVATE-TOKEN'] = token;
+            }
+        }
+    }
+    else {
+        throw new Error(`Unsupported Git provider: ${provider}`);
+    }
+    console.log(`Downloading zip from: ${url} using https.get (Headers: ${Object.keys(headers).join(', ')})`);
+    const downloadWithRedirect = (requestUrl, requestHeaders) => {
+        return new Promise((resolve, reject) => {
+            const options = { headers: requestHeaders };
+            https.get(requestUrl, options, (res) => {
+                if (res.statusCode === 301 || res.statusCode === 302) {
+                    const redirectUrl = res.headers.location;
+                    if (!redirectUrl) {
+                        reject(new Error(`Redirect location missing for status ${res.statusCode}`));
+                        return;
+                    }
+                    console.log(`Following redirect to: ${redirectUrl}`);
+                    // Follow redirect. When following redirect (e.g. to AWS S3), do NOT send credentials/auth headers
+                    downloadWithRedirect(redirectUrl, { 'User-Agent': 'BaseFlow' }).then(resolve).catch(reject);
+                    return;
+                }
+                if (res.statusCode !== 200) {
+                    let body = '';
+                    res.on('data', chunk => {
+                        if (body.length < 1000)
+                            body += chunk;
+                    });
+                    res.on('end', () => {
+                        reject(new Error(`HTTP ${res.statusCode} ${res.statusMessage}: ${body}`));
+                    });
+                    return;
+                }
+                const fileStream = fs.createWriteStream(destZipPath);
+                res.pipe(fileStream);
+                fileStream.on('finish', () => {
+                    fileStream.close();
+                    resolve();
+                });
+                fileStream.on('error', (err) => {
+                    fs.unlink(destZipPath, () => { });
+                    reject(err);
+                });
+            }).on('error', (err) => {
+                reject(err);
+            });
+        });
+    };
+    return downloadWithRedirect(url, headers);
+}
+// Helper to extract ZIP and rename/move the top-level folder
+function extractZipAndRename(zipPath, targetPath) {
+    // Use a temporary extraction directory inside the target environment's temp folder
+    const tempExtractDir = path.join(path.dirname(zipPath), `extract_temp_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
+    if (!fs.existsSync(tempExtractDir)) {
+        fs.mkdirSync(tempExtractDir, { recursive: true });
+    }
+    try {
+        console.log(`Extracting ${zipPath} to ${tempExtractDir}...`);
+        if (process.platform === 'win32') {
+            // Windows: use PowerShell Expand-Archive
+            const powershellCmd = `powershell -Command "Expand-Archive -Path '${zipPath.replace(/'/g, "''")}' -DestinationPath '${tempExtractDir.replace(/'/g, "''")}' -Force"`;
+            (0, child_process_1.execSync)(powershellCmd, { stdio: 'ignore' });
+        }
+        else {
+            // Linux/macOS: use unzip
+            (0, child_process_1.execSync)(`unzip -o "${zipPath}" -d "${tempExtractDir}"`, { stdio: 'ignore' });
+        }
+        // Find the wrapper folder extracted
+        const items = fs.readdirSync(tempExtractDir).filter(item => {
+            const stats = fs.statSync(path.join(tempExtractDir, item));
+            return stats.isDirectory();
+        });
+        if (items.length === 0) {
+            throw new Error(`Extraction failed or no folders found in zip`);
+        }
+        const sourceFolder = path.join(tempExtractDir, items[0]);
+        console.log(`Found extracted source folder: ${sourceFolder}. Moving to ${targetPath}...`);
+        if (fs.existsSync(targetPath)) {
+            fs.rmSync(targetPath, { recursive: true, force: true });
+        }
+        // Create target parent directory if not exists
+        const targetParent = path.dirname(targetPath);
+        if (!fs.existsSync(targetParent)) {
+            fs.mkdirSync(targetParent, { recursive: true });
+        }
+        // Move folder. Note: renameSync can fail across drives, fall back to cpSync recursive
+        try {
+            fs.renameSync(sourceFolder, targetPath);
+        }
+        catch (renameErr) {
+            console.log(`renameSync failed, falling back to cpSync recursive:`, renameErr);
+            fs.cpSync(sourceFolder, targetPath, { recursive: true });
+        }
+    }
+    finally {
+        // Cleanup extraction folder
+        try {
+            if (fs.existsSync(tempExtractDir)) {
+                fs.rmSync(tempExtractDir, { recursive: true, force: true });
+            }
+        }
+        catch (cleanupErr) {
+            console.warn(`Failed to clean up temp extract folder ${tempExtractDir}:`, cleanupErr);
+        }
+    }
+}
+function execAsync(command, options) {
+    return new Promise((resolve, reject) => {
+        (0, child_process_1.exec)(command, options, (error, stdout, stderr) => {
+            const outStr = stdout ? stdout.toString() : '';
+            const errStr = stderr ? stderr.toString() : '';
+            if (outStr.trim()) {
+                console.log(`[execAsync stdout]: ${outStr.trim()}`);
+            }
+            if (errStr.trim()) {
+                console.warn(`[execAsync stderr]: ${errStr.trim()}`);
+            }
+            if (error) {
+                reject(error);
+            }
+            else {
+                resolve();
+            }
+        });
+    });
+}
+function cleanDirRecursive(dirPath) {
+    if (!fs.existsSync(dirPath))
+        return;
+    let files = [];
+    try {
+        files = fs.readdirSync(dirPath);
+    }
+    catch (err) {
+        console.warn(`[GCS Cleanup] Failed to read directory ${dirPath}:`, err);
+        return;
+    }
+    for (const file of files) {
+        const curPath = path.join(dirPath, file);
+        try {
+            const stat = fs.lstatSync(curPath);
+            if (stat.isDirectory()) {
+                cleanDirRecursive(curPath);
+                try {
+                    fs.rmdirSync(curPath);
+                }
+                catch (e) { }
+            }
+            else {
+                fs.unlinkSync(curPath);
+            }
+        }
+        catch (e) { }
+    }
+}
+// Orchestrator for downloading, extracting, parsing, and GCS sync
+async function zipCloneOrPull(uri, targetPath, options, cachePath) {
+    const isCloudRun = process.env.CLOUD_RUN === '1';
+    if (!isCloudRun) {
+        // Local Machine optimization: download and extract directly to targetPath
+        const localZipPath = path.join(exports.tempDir, `repo_${Date.now()}.zip`);
+        try {
+            // Create tempDir if not exists
+            if (!fs.existsSync(exports.tempDir)) {
+                fs.mkdirSync(exports.tempDir, { recursive: true });
+            }
+            await downloadRepoZip(uri, localZipPath, options);
+            extractZipAndRename(localZipPath, targetPath);
+            if (cachePath) {
+                console.log(`Generating parse cache for ${uri} locally...`);
+                const parseResult = (0, parser_1.parseRepository)(targetPath);
+                const cacheDir = path.dirname(cachePath);
+                if (!fs.existsSync(cacheDir)) {
+                    fs.mkdirSync(cacheDir, { recursive: true });
+                }
+                fs.writeFileSync(cachePath, JSON.stringify(parseResult), 'utf-8');
+                console.log(`Cache successfully saved to ${cachePath}`);
+            }
+        }
+        finally {
+            if (fs.existsSync(localZipPath)) {
+                try {
+                    fs.unlinkSync(localZipPath);
+                }
+                catch (e) { }
+            }
+        }
+        return;
+    }
+    // Cloud Run flow using /tmp to bypass GCSFuse write latency
+    const systemTempDir = '/tmp';
+    const localZipPath = path.join(systemTempDir, `repo_${Date.now()}.zip`);
+    const localRepoPath = path.join(systemTempDir, `repo_${Date.now()}_extracted`);
+    const localCleanZipPath = path.join(systemTempDir, `clean_${Date.now()}.zip`);
+    const skillsPath = path.join(targetPath, 'skills');
+    const backupSkillsDir = path.join(systemTempDir, `skills_backup_${Date.now()}`);
+    let hasSkillsBackup = false;
+    let isBgLaunched = false;
+    exports.activeSyncPaths.set(targetPath, localRepoPath);
+    try {
+        // 1. Backup skills folder if it exists at GCS targetPath
+        if (fs.existsSync(skillsPath)) {
+            console.log(`Backing up skills from ${skillsPath} to ${backupSkillsDir}...`);
+            try {
+                fs.mkdirSync(backupSkillsDir, { recursive: true });
+                fs.cpSync(skillsPath, backupSkillsDir, { recursive: true });
+                hasSkillsBackup = true;
+            }
+            catch (err) {
+                console.warn(`Failed to back up skills folder: ${err.message || err}`);
+            }
+        }
+        // 2. Download zip file to local machine /tmp
+        await downloadRepoZip(uri, localZipPath, options);
+        // 3. Extract zip to local /tmp folder (strictly for AST indexing to avoid FUSE latency)
+        extractZipAndRename(localZipPath, localRepoPath);
+        // 4. If we have a skills backup, copy it to the local repo folder so that it is included in cache generation
+        if (hasSkillsBackup) {
+            const localSkillsDir = path.join(localRepoPath, 'skills');
+            console.log(`Copying backed up skills to local repo path at ${localSkillsDir} for indexing...`);
+            try {
+                if (!fs.existsSync(localSkillsDir)) {
+                    fs.mkdirSync(localSkillsDir, { recursive: true });
+                }
+                fs.cpSync(backupSkillsDir, localSkillsDir, { recursive: true });
+            }
+            catch (err) {
+                console.warn(`Failed to copy skills to local repo path for cache generation: ${err.message || err}`);
+            }
+        }
+        // 5. Parse and generate cache if cachePath is provided
+        if (cachePath) {
+            console.log(`Generating parse cache for ${uri} locally on /tmp...`);
+            const parseResult = (0, parser_1.parseRepository)(localRepoPath);
+            const cacheDir = path.dirname(cachePath);
+            if (!fs.existsSync(cacheDir)) {
+                fs.mkdirSync(cacheDir, { recursive: true });
+            }
+            fs.writeFileSync(cachePath, JSON.stringify(parseResult), 'utf-8');
+            console.log(`Cache successfully saved to ${cachePath}`);
+        }
+        // 6. Package the repository contents in /tmp as a clean zip (with no top-level wrapper directory)
+        console.log(`Creating a clean zip from ${localRepoPath} to ${localCleanZipPath}...`);
+        try {
+            (0, child_process_1.execSync)(`zip -r "${localCleanZipPath}" .`, { cwd: localRepoPath, stdio: 'ignore' });
+        }
+        catch (zipErr) {
+            console.error(`Failed to create clean zip using zip command:`, zipErr.message || zipErr);
+            throw zipErr;
+        }
+        // Set flag and launch background GCS sync
+        isBgLaunched = true;
+        console.log(`Launching background GCS sync for ${targetPath}...`);
+        (async () => {
+            try {
+                // 7. Clear GCS targetPath contents recursively (avoids EMFILE, Directory not empty, and FUSE rename errors)
+                if (fs.existsSync(targetPath)) {
+                    console.log(`[GCS Background] Clearing existing directory contents at ${targetPath}...`);
+                    cleanDirRecursive(targetPath);
+                }
+                // Ensure targetParent exists
+                const targetParent = path.dirname(targetPath);
+                if (!fs.existsSync(targetParent)) {
+                    fs.mkdirSync(targetParent, { recursive: true });
+                }
+                // Ensure targetPath exists
+                if (!fs.existsSync(targetPath)) {
+                    fs.mkdirSync(targetPath, { recursive: true });
+                }
+                // 8. Extract clean ZIP from local /tmp directly into GCS targetPath
+                console.log(`[GCS Background] Extracting clean ZIP to GCS targetPath at ${targetPath}...`);
+                await execAsync(`unzip -o "${localCleanZipPath}" -d "${targetPath}"`);
+                console.log(`[GCS Background] GCS extraction and sync completed successfully.`);
+            }
+            catch (bgErr) {
+                console.error(`[GCS Background Error] Failed to clear and extract on GCS:`, bgErr.message || bgErr);
+            }
+            finally {
+                exports.activeSyncPaths.delete(targetPath);
+                // Clean up temporary files in local /tmp
+                try {
+                    if (fs.existsSync(localZipPath)) {
+                        fs.unlinkSync(localZipPath);
+                    }
+                }
+                catch (e) { }
+                try {
+                    if (fs.existsSync(localRepoPath)) {
+                        fs.rmSync(localRepoPath, { recursive: true, force: true });
+                    }
+                }
+                catch (e) { }
+                try {
+                    if (fs.existsSync(localCleanZipPath)) {
+                        fs.unlinkSync(localCleanZipPath);
+                    }
+                }
+                catch (e) { }
+                try {
+                    if (fs.existsSync(backupSkillsDir)) {
+                        fs.rmSync(backupSkillsDir, { recursive: true, force: true });
+                    }
+                }
+                catch (e) { }
+                console.log(`[GCS Background] Cleanup completed.`);
+            }
+        })();
+    }
+    finally {
+        // Only cleanup synchronously if the background process was NOT launched
+        if (!isBgLaunched) {
+            exports.activeSyncPaths.delete(targetPath);
+            try {
+                if (fs.existsSync(localZipPath)) {
+                    fs.unlinkSync(localZipPath);
+                }
+            }
+            catch (e) { }
+            try {
+                if (fs.existsSync(localRepoPath)) {
+                    fs.rmSync(localRepoPath, { recursive: true, force: true });
+                }
+            }
+            catch (e) { }
+            try {
+                if (fs.existsSync(localCleanZipPath)) {
+                    fs.unlinkSync(localCleanZipPath);
+                }
+            }
+            catch (e) { }
+            try {
+                if (fs.existsSync(backupSkillsDir)) {
+                    fs.rmSync(backupSkillsDir, { recursive: true, force: true });
+                }
+            }
+            catch (e) { }
+        }
+    }
+}
+// Orchestrator for zipping GCS folder -> move to local /tmp -> unzip -> parse -> upload cache
+async function zipRefresh(repoPath, cachePath) {
+    if (!fs.existsSync(repoPath)) {
+        throw new Error(`Repository folder does not exist: ${repoPath}`);
+    }
+    const systemTempDir = process.platform === 'win32' ? process.env.TEMP || 'C:\\Windows\\Temp' : '/tmp';
+    const localZipPath = path.join(systemTempDir, `refresh_${Date.now()}.zip`);
+    const localRepoPath = path.join(systemTempDir, `refresh_${Date.now()}_extracted`);
+    try {
+        console.log(`Zipping repository folder ${repoPath} to ${localZipPath}...`);
+        if (process.platform === 'win32') {
+            // Windows: use PowerShell Compress-Archive
+            const powershellCmd = `powershell -Command "Compress-Archive -Path '${repoPath.replace(/'/g, "''")}\\*' -DestinationPath '${localZipPath.replace(/'/g, "''")}' -Force"`;
+            (0, child_process_1.execSync)(powershellCmd, { stdio: 'ignore' });
+        }
+        else {
+            // Linux: use zip
+            (0, child_process_1.execSync)(`zip -r "${localZipPath}" .`, { cwd: repoPath, stdio: 'ignore' });
+        }
+        console.log(`Extracting zip to local /tmp path ${localRepoPath}...`);
+        if (!fs.existsSync(localRepoPath)) {
+            fs.mkdirSync(localRepoPath, { recursive: true });
+        }
+        if (process.platform === 'win32') {
+            const powershellCmd = `powershell -Command "Expand-Archive -Path '${localZipPath.replace(/'/g, "''")}' -DestinationPath '${localRepoPath.replace(/'/g, "''")}' -Force"`;
+            (0, child_process_1.execSync)(powershellCmd, { stdio: 'ignore' });
+        }
+        else {
+            (0, child_process_1.execSync)(`unzip -o "${localZipPath}" -d "${localRepoPath}"`, { stdio: 'ignore' });
+        }
+        console.log(`Generating parse cache locally from ${localRepoPath}...`);
+        const parseResult = (0, parser_1.parseRepository)(localRepoPath);
+        const cacheDir = path.dirname(cachePath);
+        if (!fs.existsSync(cacheDir)) {
+            fs.mkdirSync(cacheDir, { recursive: true });
+        }
+        fs.writeFileSync(cachePath, JSON.stringify(parseResult), 'utf-8');
+        console.log(`Cache successfully written/updated at ${cachePath}`);
+        return parseResult;
+    }
+    finally {
+        // Cleanup local temp zip and repo folder
+        try {
+            if (fs.existsSync(localZipPath)) {
+                fs.unlinkSync(localZipPath);
+            }
+            if (fs.existsSync(localRepoPath)) {
+                fs.rmSync(localRepoPath, { recursive: true, force: true });
+            }
+        }
+        catch (cleanupErr) {
+            console.warn(`Failed to clean up refresh local temp files:`, cleanupErr);
+        }
     }
 }
 // Git repository URL parser
@@ -155,50 +589,23 @@ async function getOrScanRepo(profileName) {
         throw new Error(`Profile ${profileName} not found.`);
     }
     const targetPath = resolveRepoPath(profile);
-    // If remote and does not exist, clone it
+    // If remote and does not exist, download ZIP
     if (profile.options?.type !== 'local' && !fs.existsSync(targetPath)) {
-        console.log(`Auto-cloning ${profile.uri} to ${targetPath}...`);
-        const cloneOptions = ['--depth', '100'];
-        if (profile.options?.branch) {
-            cloneOptions.push('-b', profile.options.branch);
-        }
+        console.log(`Auto-downloading remote ZIP for ${profile.uri} to ${targetPath}...`);
+        const cachePath = path.join(exports.tempDir, `${profileName}_cache.json`);
         try {
-            const authUri = getAuthenticatedGitUrl(profile.uri, profile.options);
-            await (0, simple_git_1.simpleGit)().clone(authUri, targetPath, cloneOptions);
+            await zipCloneOrPull(profile.uri, targetPath, profile.options, cachePath);
         }
         catch (e) {
-            const msg = e.message || String(e);
-            console.warn(`Clone warning/error (could be checkout warning on Windows):`, msg);
-            // Retry with SSL verification disabled if this is an SSL cert error (e.g. Cloud Run)
-            const isSslError = msg.includes('certificate') || msg.includes('SSL') || msg.includes('CAfile');
-            if (isSslError) {
-                console.warn('SSL certificate error detected. Retrying clone with http.sslVerify=false...');
-                try {
-                    const authUri = getAuthenticatedGitUrl(profile.uri, profile.options);
-                    await (0, simple_git_1.simpleGit)({ config: ['http.sslVerify=false'] }).clone(authUri, targetPath, cloneOptions);
-                }
-                catch (retryErr) {
-                    console.warn('Retry clone also failed:', retryErr.message || retryErr);
-                    // Fall through to existing check below
-                }
-            }
-            // Check if target directory exists and is populated with actual source files
-            if (fs.existsSync(targetPath) && fs.readdirSync(targetPath).filter(f => f !== '.git' && f !== '.baseflow_diagrams.json').length > 0) {
-                console.log(`Proceeding anyway since target path has files.`);
-            }
-            else {
-                throw e;
-            }
+            console.error(`Failed to download and extract ZIP:`, e);
+            throw e;
         }
-    }
-    if (!fs.existsSync(targetPath)) {
-        throw new Error(`Path does not exist: ${targetPath}`);
     }
     // Check for cached scan result file
     const cachePath = path.join(exports.tempDir, `${profileName}_cache.json`);
-    let useCache = false;
-    if (fs.existsSync(cachePath)) {
-        useCache = true;
+    const useCache = fs.existsSync(cachePath);
+    if (!useCache && !fs.existsSync(targetPath)) {
+        throw new Error(`Path does not exist: ${targetPath}`);
     }
     if (useCache) {
         try {
@@ -218,14 +625,21 @@ async function getOrScanRepo(profileName) {
             console.warn(`Failed to parse cache file for ${profileName}, re-scanning...`, err);
         }
     }
-    console.log(`First scan or changes detected. Parsing repository ${profileName}...`);
-    const result = (0, parser_1.parseRepository)(targetPath);
-    // Write to cache file
-    try {
-        fs.writeFileSync(cachePath, JSON.stringify(result), 'utf-8');
+    let result;
+    if (profile.options?.type !== 'local' && process.env.CLOUD_RUN === '1') {
+        console.log(`Re-indexing remote repository ${profileName} using GCS ZIP cache on Cloud Run...`);
+        result = await zipRefresh(targetPath, cachePath);
     }
-    catch (err) {
-        console.warn(`Failed to write cache file for ${profileName}:`, err);
+    else {
+        console.log(`First scan or changes detected/Local re-indexing. Parsing repository ${profileName}...`);
+        result = (0, parser_1.parseRepository)(targetPath);
+        // Write to cache file
+        try {
+            fs.writeFileSync(cachePath, JSON.stringify(result), 'utf-8');
+        }
+        catch (err) {
+            console.warn(`Failed to write cache file for ${profileName}:`, err);
+        }
     }
     (0, tools_1.setCurrentScanResult)(targetPath, result.classes);
     const finalRes = {
@@ -680,44 +1094,13 @@ async function cloneRemoteRepo(uri, options, forceClone = false) {
         }
     }
     if (!fs.existsSync(targetPath)) {
-        console.log(`Auto-cloning remote repo ${uri} to ${targetPath} during validation...`);
-        const cloneOptions = ['--depth', '100'];
-        if (options?.branch) {
-            cloneOptions.push('-b', options.branch);
-        }
+        console.log(`Auto-downloading remote ZIP for ${uri} to ${targetPath} during validation...`);
         try {
-            const authUri = getAuthenticatedGitUrl(uri, options);
-            await (0, simple_git_1.simpleGit)().clone(authUri, targetPath, cloneOptions);
+            await zipCloneOrPull(uri, targetPath, options);
         }
         catch (e) {
-            const msg = e.message || String(e);
-            console.warn(`Clone warning/error during creation:`, msg);
-            // Retry with SSL verification disabled if this is an SSL cert error (e.g. Cloud Run)
-            const isSslError = msg.includes('certificate') || msg.includes('SSL') || msg.includes('CAfile');
-            if (isSslError) {
-                console.warn('SSL certificate error detected. Retrying clone with http.sslVerify=false...');
-                try {
-                    const authUri = getAuthenticatedGitUrl(uri, options);
-                    await (0, simple_git_1.simpleGit)({ config: ['http.sslVerify=false'] }).clone(authUri, targetPath, cloneOptions);
-                    // If retry succeeded, return early
-                    return targetPath;
-                }
-                catch (retryErr) {
-                    console.warn('SSL-bypass clone also failed:', retryErr.message || retryErr);
-                    throw new Error(`Failed to clone remote repository. Please check the URL and your connection. Detail: ${msg}`);
-                }
-            }
-            // Check if target directory exists and is populated with actual source files
-            if (fs.existsSync(targetPath) && fs.readdirSync(targetPath).filter(f => f !== '.git' && f !== '.baseflow_diagrams.json').length > 0) {
-                console.log(`Proceeding anyway since target path has files.`);
-            }
-            else {
-                // Clean up partially cloned/empty directory
-                if (fs.existsSync(targetPath)) {
-                    fs.rmSync(targetPath, { recursive: true, force: true });
-                }
-                throw new Error(`Failed to clone remote repository. Please check the URL and your connection. Detail: ${e.message || e}`);
-            }
+            console.error(`Failed to download and extract ZIP during validation:`, e);
+            throw e;
         }
     }
     return targetPath;

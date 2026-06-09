@@ -39,6 +39,8 @@ COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 RUN apt-get update && apt-get install -y \
     git \
     ca-certificates \
+    zip \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Trust system CA certificates for HTTPS git clone on Cloud Run

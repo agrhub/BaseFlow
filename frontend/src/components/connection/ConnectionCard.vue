@@ -7,7 +7,7 @@
         <span class="conn-name">{{ name }}</span>
       </div>
       <div class="conn-options">
-        <el-tag type="success" round v-if="config.connection_options?.type === 'remote'"><el-icon><Cloudy /></el-icon>{{ store.t('Remote') }}</el-tag>
+        <el-tag :type="providerType" round v-if="config.connection_options?.type === 'remote'"><el-icon><Cloudy /></el-icon>{{ providerName }}</el-tag>
         <el-tag type="primary" round v-else-if="config.connection_options?.type === 'local'"><el-icon><Monitor /></el-icon>{{ store.t('Local') }}</el-tag>
         <el-dropdown trigger="click" @command="handleCommand" @click.stop>
           <el-button type="primary" link :icon="MoreFilled" @click.stop />
@@ -56,6 +56,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { store } from '../../stores';
 import { Connection, Edit, Delete, MoreFilled } from '@element-plus/icons-vue';
@@ -79,6 +80,20 @@ const emit = defineEmits<{
 }>();
 
 const router = useRouter();
+
+const providerName = computed(() => {
+  const connStr = props.config.connection_string || '';
+  if (connStr.includes('github.com')) return 'GitHub';
+  if (connStr.includes('gitlab.com')) return 'GitLab';
+  return store.t('Remote');
+});
+
+const providerType = computed(() => {
+  const connStr = props.config.connection_string || '';
+  if (connStr.includes('github.com')) return 'warning';
+  if (connStr.includes('gitlab.com')) return 'danger';
+  return 'success';
+});
 
 const maskConnString = (str?: string) => {
   if (!str) return '';

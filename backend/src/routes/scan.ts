@@ -13,7 +13,12 @@ import {
   tempDir,
   generateReadmeAnalysis,
   performCompleteAnalysis,
-  clearRepoCache
+  clearRepoCache,
+  zipCloneOrPull,
+  zipRefresh,
+  fetchFromGitHub,
+  fetchFromGitLab,
+  activeSyncPaths
 } from './helpers';
 import { geminiService } from '../services/GeminiService';
 import { getClassAnalysisPrompt } from '../prompts/prompts';
@@ -109,6 +114,27 @@ function getMimeType(filePath: string): string {
   return mimeMap[ext] || 'application/octet-stream';
 }
 
+// Helper to resolve filePath, fallback to /tmp local sync path if GCS file does not exist during sync
+function resolveFilePathWithFallback(repoPath: string, filePath: string): { resolvedFilePath: string; activeRepoRoot: string } {
+  let resolvedFilePath = path.resolve(repoPath, filePath);
+  let activeRepoRoot = repoPath;
+
+  if (!fs.existsSync(resolvedFilePath)) {
+    const localSyncPath = activeSyncPaths.get(repoPath);
+    if (localSyncPath) {
+      const localFilePath = path.resolve(localSyncPath, filePath);
+      const relativeLocal = path.relative(localSyncPath, localFilePath);
+      if (!relativeLocal.startsWith('..') && !path.isAbsolute(relativeLocal) && fs.existsSync(localFilePath)) {
+        console.log(`[File Fallback] Reading ${filePath} from local sync path: ${localFilePath}`);
+        resolvedFilePath = localFilePath;
+        activeRepoRoot = localSyncPath;
+      }
+    }
+  }
+
+  return { resolvedFilePath, activeRepoRoot };
+}
+
 // 1b. Read source file content on demand (replaces rawCode in cache)
 router.get('/:conn/file-content', async (req, res) => {
   const { conn } = req.params;
@@ -118,20 +144,21 @@ router.get('/:conn/file-content', async (req, res) => {
   }
   try {
     const { repoPath } = await getOrScanRepo(conn);
+    const { resolvedFilePath, activeRepoRoot } = resolveFilePathWithFallback(repoPath, filePath);
+
     // Security: prevent path traversal outside repo
-    const fullPath = path.resolve(repoPath, filePath);
-    const relative = path.relative(repoPath, fullPath);
+    const relative = path.relative(activeRepoRoot, resolvedFilePath);
     if (relative.startsWith('..') || path.isAbsolute(relative)) {
       return res.status(403).json({ error: 'Access denied: path traversal not allowed' });
     }
-    if (!fs.existsSync(fullPath)) {
+    if (!fs.existsSync(resolvedFilePath)) {
       return res.status(404).json({ error: `File not found: ${filePath}` });
     }
 
-    const stat = fs.statSync(fullPath);
+    const stat = fs.statSync(resolvedFilePath);
     
     // Check if the file is binary first by reading the first 1024 bytes
-    const fd = fs.openSync(fullPath, 'r');
+    const fd = fs.openSync(resolvedFilePath, 'r');
     const headerBuffer = Buffer.alloc(1024);
     const headerBytesRead = fs.readSync(fd, headerBuffer, 0, headerBuffer.length, 0);
     fs.closeSync(fd);
@@ -153,14 +180,14 @@ router.get('/:conn/file-content', async (req, res) => {
       const maxSize = 1 * 1024 * 1024; // 1 MB limit
       if (stat.size > maxSize) {
         // Read first 200 KB
-        const fd2 = fs.openSync(fullPath, 'r');
+        const fd2 = fs.openSync(resolvedFilePath, 'r');
         const buffer = Buffer.alloc(200 * 1024);
         const bytesRead = fs.readSync(fd2, buffer, 0, buffer.length, 0);
         fs.closeSync(fd2);
         content = buffer.toString('utf-8', 0, bytesRead) + `\n\n... [File truncated: File size is ${(stat.size / (1024 * 1024)).toFixed(2)} MB. Showing first 200 KB only] ...`;
         truncated = true;
       } else {
-        content = fs.readFileSync(fullPath, 'utf-8');
+        content = fs.readFileSync(resolvedFilePath, 'utf-8');
       }
     }
 
@@ -179,13 +206,14 @@ router.get('/:conn/file-raw', async (req, res) => {
   }
   try {
     const { repoPath } = await getOrScanRepo(conn);
+    const { resolvedFilePath, activeRepoRoot } = resolveFilePathWithFallback(repoPath, filePath);
+
     // Security: prevent path traversal outside repo
-    const fullPath = path.resolve(repoPath, filePath);
-    const relative = path.relative(repoPath, fullPath);
+    const relative = path.relative(activeRepoRoot, resolvedFilePath);
     if (relative.startsWith('..') || path.isAbsolute(relative)) {
       return res.status(403).json({ error: 'Access denied: path traversal not allowed' });
     }
-    if (!fs.existsSync(fullPath)) {
+    if (!fs.existsSync(resolvedFilePath)) {
       return res.status(404).json({ error: `File not found: ${filePath}` });
     }
 
@@ -193,7 +221,7 @@ router.get('/:conn/file-raw', async (req, res) => {
     let mimeType = getMimeType(filePath);
     
     // Check if binary to handle .ts MPEG-TS video file correctly
-    const fd = fs.openSync(fullPath, 'r');
+    const fd = fs.openSync(resolvedFilePath, 'r');
     const headerBuffer = Buffer.alloc(1024);
     const headerBytesRead = fs.readSync(fd, headerBuffer, 0, headerBuffer.length, 0);
     fs.closeSync(fd);
@@ -202,7 +230,7 @@ router.get('/:conn/file-raw', async (req, res) => {
     }
 
     res.setHeader('Content-Type', mimeType);
-    res.sendFile(fullPath);
+    res.sendFile(resolvedFilePath);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -243,25 +271,79 @@ router.get('/:conn/stats', async (req, res) => {
     // Fetch commit history and group by date
     let commits: any[] = [];
     const commitCountsByDate: Record<string, number> = {};
-    try {
-      const git = simpleGit(repoPath);
-      const log = await git.log({ maxCount: 100 });
-      commits = log.all.slice(0, 15).map(c => ({
-        hash: c.hash.substring(0, 7),
-        date: c.date,
-        author: c.author_name,
-        message: c.message
-      }));
+    let readFromDiskSuccess = false;
 
-      // Calculate daily activity for last 14 days
-      log.all.forEach(c => {
-        const d = new Date(c.date);
-        if (isNaN(d.getTime())) return;
-        const dateStr = d.toISOString().split('T')[0];
-        commitCountsByDate[dateStr] = (commitCountsByDate[dateStr] || 0) + 1;
-      });
+    // First try: Read from local Git logs on disk (useful for local connection types)
+    try {
+      if (fs.existsSync(path.join(repoPath, '.git'))) {
+        const git = simpleGit(repoPath);
+        const log = await git.log({ maxCount: 100 });
+        commits = log.all.slice(0, 15).map(c => ({
+          hash: c.hash.substring(0, 7),
+          date: c.date,
+          author: c.author_name,
+          message: c.message
+        }));
+
+        // Calculate daily activity for last 14 days
+        log.all.forEach(c => {
+          const d = new Date(c.date);
+          if (isNaN(d.getTime())) return;
+          const dateStr = d.toISOString().split('T')[0];
+          commitCountsByDate[dateStr] = (commitCountsByDate[dateStr] || 0) + 1;
+        });
+        readFromDiskSuccess = true;
+      }
     } catch (e) {
-      console.warn('Could not read Git logs (possibly not a git repo or no commits yet):', e);
+      console.warn('Could not read Git logs from disk:', e);
+    }
+
+    // Second try: If local Git logs fail or don't exist (e.g. remote zip downloaded on Cloud Run),
+    // and we have remote DevOps provider configured, call the API directly!
+    if (!readFromDiskSuccess) {
+      try {
+        const devops = await getDevOpsInfo(conn);
+        if (devops && devops.provider !== 'none') {
+          const token = devops.profile.options?.gitToken;
+          let remoteCommits: any[] = [];
+          
+          if (devops.provider === 'github') {
+            remoteCommits = (await fetchFromGitHub(devops.owner, devops.repo, 'commits?per_page=100', token)) as any[];
+            commits = remoteCommits.slice(0, 15).map((c: any) => ({
+              hash: c.sha.substring(0, 7),
+              date: c.commit.author.date,
+              author: c.commit.author.name,
+              message: c.commit.message
+            }));
+            
+            // Calculate daily activity for last 14 days
+            remoteCommits.forEach((c: any) => {
+              const d = new Date(c.commit.author.date);
+              if (isNaN(d.getTime())) return;
+              const dateStr = d.toISOString().split('T')[0];
+              commitCountsByDate[dateStr] = (commitCountsByDate[dateStr] || 0) + 1;
+            });
+          } else if (devops.provider === 'gitlab') {
+            remoteCommits = (await fetchFromGitLab(devops.fullPath, 'repository/commits?per_page=100', token)) as any[];
+            commits = remoteCommits.slice(0, 15).map((c: any) => ({
+              hash: c.id.substring(0, 7),
+              date: c.created_at,
+              author: c.author_name,
+              message: c.message
+            }));
+            
+            // Calculate daily activity for last 14 days
+            remoteCommits.forEach((c: any) => {
+              const d = new Date(c.created_at);
+              if (isNaN(d.getTime())) return;
+              const dateStr = d.toISOString().split('T')[0];
+              commitCountsByDate[dateStr] = (commitCountsByDate[dateStr] || 0) + 1;
+            });
+          }
+        }
+      } catch (apiErr: any) {
+        console.warn('Could not fetch commit history from remote API:', apiErr.message || apiErr);
+      }
     }
 
     let commitActivity: Array<{ date: string; count: number }> = [];
@@ -466,11 +548,11 @@ router.get('/scan-stream', async (req: any, res: any) => {
       const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'temp-repo';
       targetPath = path.join(tempDir, repoName);
 
-      sendProgress(2, 4, 'Performing shallow clone...');
+      sendProgress(2, 4, 'Performing ZIP download...');
       if (fs.existsSync(targetPath)) {
         fs.rmSync(targetPath, { recursive: true, force: true });
       }
-      await simpleGit().clone(repoUrl, targetPath, ['--depth', '100']);
+      await zipCloneOrPull(repoUrl, targetPath, {});
       sendProgress(3, 4, 'Completed downloading repository source code.');
     } else {
       res.write(`data: ${JSON.stringify({ type: 'error', error: 'Please provide repoUrl or localPath.' })}\n\n`);
@@ -563,29 +645,14 @@ router.post('/:conn/pull', async (req, res) => {
 
     const targetPath = resolveRepoPath(profile);
     if (!fs.existsSync(targetPath)) {
-      return res.status(404).json({ error: `Repository clone directory does not exist: ${targetPath}` });
+      return res.status(404).json({ error: `Repository directory does not exist: ${targetPath}` });
     }
 
-    console.log(`Pulling updates for ${conn} at ${targetPath}...`);
-    const git = simpleGit(targetPath);
-    
-    // Run git pull
-    try {
-      await git.pull();
-    } catch (e: any) {
-      console.warn(`Pull warning/error (checking if local modifications or branch checkout failed):`, e.message || e);
-      // Fallback: git fetch && git reset --hard origin/<branch>
-      const branch = profile.options?.branch || 'main';
-      try {
-        console.log(`Failed to pull, trying force reset to origin/${branch}...`);
-        await git.fetch();
-        await git.reset(['--hard', `origin/${branch}`]);
-      } catch (resetErr: any) {
-        throw new Error(`Failed to pull or reset repository: ${resetErr.message || resetErr}`);
-      }
-    }
-
+    console.log(`Pulling ZIP updates for ${conn} at ${targetPath}...`);
     clearRepoCache(conn);
+    
+    const cachePath = path.join(tempDir, `${conn}_cache.json`);
+    await zipCloneOrPull(profile.uri, targetPath, profile.options, cachePath);
     
     // Perform a fresh scan
     const scanData = await getOrScanRepo(conn);

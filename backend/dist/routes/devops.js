@@ -25,7 +25,7 @@ router.get('/:conn/devops/info', async (req, res) => {
             fullPath: devops.fullPath,
             hasToken: devops.hasToken,
             options: {
-                gitToken: devops.profile.options?.gitToken || '',
+                gitToken: devops.profile.options?.gitToken ? '••••••••' : '',
                 gitMcpServer: devops.profile.options?.gitMcpServer || '',
                 branch: devops.profile.options?.branch || 'main'
             }
@@ -43,9 +43,13 @@ router.post('/:conn/devops/save-token', async (req, res) => {
         const profile = await ConnectionStore_1.connectionStore.getConnection(conn);
         if (!profile)
             return res.status(404).json({ error: 'Profile not found' });
+        let finalToken = gitToken;
+        if (gitToken === '••••••••' && profile.options?.gitToken) {
+            finalToken = profile.options.gitToken;
+        }
         const updatedOptions = {
             ...(profile.options || {}),
-            gitToken: gitToken || '',
+            gitToken: finalToken || '',
             gitMcpServer: gitMcpServer || ''
         };
         await ConnectionStore_1.connectionStore.saveConnection(profile.name, profile.uri, updatedOptions);
