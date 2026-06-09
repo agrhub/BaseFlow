@@ -407,6 +407,15 @@ const sendChat = async (userText: string) => {
   const agentMsgIndex = messages.value.push({ role: 'assistant', content: '', suggestions: [] }) - 1;
 
   try {
+    if (typeof pendo !== 'undefined') {
+      pendo.track('ai_chat_stream_sent', {
+        connection_name: store.activeConnection || '',
+        session_id: sessionId.value,
+        active_tab: store.activeTab || '',
+        active_item: store.activeItem || '',
+        message_length: userText.length
+      });
+    }
     const res = await fetch('/api/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
