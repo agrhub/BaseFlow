@@ -116,6 +116,8 @@ import ChatMessageBubble from './ChatMessageBubble.vue';
 import MentionListPopup from './MentionListPopup.vue';
 import ChatInputPanel from './ChatInputPanel.vue';
 
+declare var pendo: { trackAgent: (eventType: string, metadata: object) => void };
+
 // --- State ---
 const inputMsg = ref('');
 const thinking = ref(false);
@@ -389,6 +391,17 @@ const sendChat = async (userText: string) => {
 
   messages.value.push({ role: 'user', content: userText });
   scrollBottom();
+
+  const promptMessageId = crypto.randomUUID();
+  if (typeof pendo !== 'undefined') {
+    pendo.trackAgent("prompt", {
+      agentId: "CVp8Kt6i3RoVy2qbAxrkE7aVL7Q",
+      conversationId: sessionId.value,
+      messageId: promptMessageId,
+      content: userText
+    });
+  }
+
   thinking.value = true;
   
   const agentMsgIndex = messages.value.push({ role: 'assistant', content: '', suggestions: [] }) - 1;
@@ -437,6 +450,14 @@ const sendChat = async (userText: string) => {
                messages.value[agentMsgIndex].content += data.chunk;
                scrollBottom();
             } else if (data.done) {
+               if (typeof pendo !== 'undefined') {
+                 pendo.trackAgent("agent_response", {
+                   agentId: "CVp8Kt6i3RoVy2qbAxrkE7aVL7Q",
+                   conversationId: sessionId.value,
+                   messageId: crypto.randomUUID(),
+                   content: messages.value[agentMsgIndex].content
+                 });
+               }
                if (data.suggestions) {
                  messages.value[agentMsgIndex].suggestions = data.suggestions;
                  currentSuggestions.value = data.suggestions.map((s: string) => ({
@@ -542,6 +563,14 @@ const handleRetry = (idx: number) => {
     if (messages.value[i].role === 'user') {
       const text = messages.value[i].content;
       messages.value.splice(idx, 1);
+      if (typeof pendo !== 'undefined') {
+        pendo.trackAgent("user_reaction", {
+          agentId: "CVp8Kt6i3RoVy2qbAxrkE7aVL7Q",
+          conversationId: sessionId.value,
+          messageId: crypto.randomUUID(),
+          content: "retry"
+        });
+      }
       sendChat(text);
       return;
     }
@@ -553,6 +582,7 @@ const handleClearChat = async () => {
   try {
     await axios.delete('/api/agent/session');
     messages.value = [];
+    sessionId.value = Math.random().toString(36).substring(2, 15);
     currentSuggestions.value = [];
     ElMessage.success(store.t('Chat history cleared.'));
   } catch (e) {
