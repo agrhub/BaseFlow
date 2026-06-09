@@ -42,8 +42,9 @@ gcloud run deploy ${IMAGE_NAME} \
   --port=8080 \
   --execution-environment=gen2 \
   --max-instances=1 \
+  --memory=2Gi \
   --add-volume=name=data-vol,type=cloud-storage,bucket=${BUCKET_NAME} \
   --add-volume-mount=volume=data-vol,mount-path=/mnt/storage \
-  --set-env-vars="HOST=0.0.0.0,NODE_ENV=production,DATA_DIR=/mnt/storage/data,TEMP_DIR=/mnt/storage/temp,PASSWORD=${APP_PASSWORD},ENCRYPTION_KEY=${APP_ENCRYPTION_KEY},AGENT_MODEL=${APP_AGENT_MODEL},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,GOOGLE_GENAI_USE_VERTEXAI=1,GOOGLE_API_KEY=${GOOGLE_API_KEY}"
+  --set-env-vars="HOST=0.0.0.0,NODE_ENV=production,CLOUD_RUN=1,DATA_DIR=/mnt/storage/data,TEMP_DIR=/mnt/storage/temp,PASSWORD=${APP_PASSWORD},ENCRYPTION_KEY=${APP_ENCRYPTION_KEY},AGENT_MODEL=${APP_AGENT_MODEL},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,GOOGLE_GENAI_USE_VERTEXAI=1,GOOGLE_API_KEY=${GOOGLE_API_KEY}"
 
 echo "Deployment complete!"

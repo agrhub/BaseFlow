@@ -14,27 +14,40 @@
 
     <!-- Input bar -->
     <div class="input-panel-row">
-      <el-input
-        ref="elInputRef"
-        v-model="internalValue"
-        :placeholder="store.t('Ask about code, request refactoring, navigate tabs...')"
-        class="chat-input-bar"
-        @input="onInput"
-        @keydown="onKeydown"
-        @blur="$emit('blur')"
-      >
-        <template #prepend>
-          <el-button
-            :type="listening ? 'danger' : 'info'"
-            :title="store.t('Voice input')"
-            :icon="Microphone"
-            @click="$emit('voice-click')"
-          ></el-button>
-        </template>
-        <template #append>
-          <el-button @click="$emit('send')" :loading="thinking" :icon="Promotion" :title="store.t('Send')"></el-button>
-        </template>
-      </el-input>
+      <div class="chat-input-wrapper" :class="{ 'is-focused': isFocused }">
+        <el-button
+          :type="listening ? 'danger' : 'default'"
+          :title="store.t('Voice input')"
+          :icon="Microphone"
+          circle
+          class="voice-input-btn"
+          @click="$emit('voice-click')"
+        ></el-button>
+
+        <el-input
+          ref="elInputRef"
+          v-model="internalValue"
+          type="textarea"
+          :autosize="{ minRows: 1, maxRows: 6 }"
+          :placeholder="store.t('Ask about code, request refactoring, navigate tabs...')"
+          class="chat-input-textarea"
+          resize="none"
+          @input="onInput"
+          @keydown="onKeydown"
+          @focus="isFocused = true"
+          @blur="onBlur"
+        />
+
+        <el-button
+          type="primary"
+          :loading="thinking"
+          :icon="Promotion"
+          :title="store.t('Send')"
+          circle
+          class="send-message-btn"
+          @click="$emit('send')"
+        ></el-button>
+      </div>
     </div>
   </div>
 </template>
@@ -62,6 +75,7 @@ const emit = defineEmits<{
 }>();
 
 const elInputRef = ref<any>(null);
+const isFocused = ref(false);
 
 const internalValue = computed({
   get() {
@@ -78,6 +92,11 @@ const onInput = (val: string) => {
 
 const onKeydown = (event: KeyboardEvent) => {
   emit('keydown', event);
+};
+
+const onBlur = () => {
+  isFocused.value = false;
+  emit('blur');
 };
 
 const focus = () => {
@@ -118,7 +137,52 @@ defineExpose({
   flex-shrink: 0;
 }
 
-.chat-input-bar {
-  width: 100%;
+.chat-input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 6px 8px;
+  gap: 8px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+}
+
+.chat-input-wrapper.is-focused {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 2px var(--color-brand-light);
+}
+
+.voice-input-btn, .send-message-btn {
+  flex-shrink: 0;
+  align-self: flex-end;
+  margin-bottom: 2px;
+}
+
+.chat-input-textarea {
+  flex: 1;
+}
+
+.chat-input-textarea :deep(.el-textarea__inner) {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 6px 4px !important;
+  resize: none !important;
+  color: var(--text-primary) !important;
+  font-family: inherit !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  min-height: 24px !important;
+}
+
+.chat-input-textarea :deep(.el-textarea__inner)::-webkit-scrollbar {
+  width: 4px;
+}
+
+.chat-input-textarea :deep(.el-textarea__inner)::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 2px;
 }
 </style>

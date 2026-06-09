@@ -306,19 +306,29 @@ const escapeHtml = (text: string): string => {
 
 const highlightLine = (lineText: string): string => {
   if (!lineText) return ' ';
-  let html = escapeHtml(lineText);
+  
+  let html = lineText;
   let commentPart = '';
+  
+  // 1. Extract inline comments first to prevent matching quotes inside comments
   const inlineCommentIdx = html.indexOf('//');
   if (inlineCommentIdx !== -1) {
-    commentPart = `<span class="token-comment">${html.substring(inlineCommentIdx)}</span>`;
+    commentPart = `<span class="token-comment">${escapeHtml(html.substring(inlineCommentIdx))}</span>`;
     html = html.substring(0, inlineCommentIdx);
   }
+
+  // 2. Extract strings first before escaping HTML to preserve quotes for matching
   const strings: string[] = [];
   html = html.replace(/(["'])(.*?)\1/g, (match) => {
     const placeholder = `___STR_PLACEHOLDER_${strings.length}___`;
-    strings.push(`<span class="token-string">${match}</span>`);
+    strings.push(`<span class="token-string">${escapeHtml(match)}</span>`);
     return placeholder;
   });
+
+  // 3. Escape HTML on the remaining structure
+  html = escapeHtml(html);
+
+  // 4. Highlight keywords, annotations, numbers
   const keywords = [
     'public', 'private', 'protected', 'internal', 'abstract', 'static', 'final', 'volatile', 'transient', 
     'synchronized', 'class', 'interface', 'enum', 'extends', 'implements', 'void', 'int', 'boolean', 
@@ -330,9 +340,12 @@ const highlightLine = (lineText: string): string => {
   html = html.replace(keywordRegex, '<span class="token-keyword">$1</span>');
   html = html.replace(/(@\w+)/g, '<span class="token-annotation">$1</span>');
   html = html.replace(/\b(\d+)\b/g, '<span class="token-number">$1</span>');
+
+  // 5. Restore extracted strings
   for (let i = 0; i < strings.length; i++) {
     html = html.replace(`___STR_PLACEHOLDER_${i}___`, strings[i]);
   }
+
   return html + commentPart;
 };
 

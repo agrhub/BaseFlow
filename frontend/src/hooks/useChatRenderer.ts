@@ -4,121 +4,135 @@ import { ElMessage } from 'element-plus';
 import MarkdownIt from 'markdown-it';
 import mermaid from 'mermaid';
 import axios from 'axios';
+import router from '../router';
 
 const md = new MarkdownIt({ html: true, linkify: true });
 
 export function useChatRenderer() {
-  const linkifyEntities = (text: string) => {
-    if (!store.classesData || store.classesData.length === 0) {
-      return text;
+  // Helper lookup to find matching files from sidebarList
+  const findFileMatch = (pathStr: string) => {
+    const normalizedPath = pathStr.replace(/\\/g, '/');
+    const pathParts = normalizedPath.split('/');
+    const filename = pathParts[pathParts.length - 1];
+    
+    for (const [folder, files] of Object.entries(store.sidebarList || {})) {
+      for (const file of files) {
+        if (file.toLowerCase() === filename.toLowerCase()) {
+          const fullPath = folder === 'root' ? file : `${folder}/${file}`;
+          if (fullPath.toLowerCase().endsWith(normalizedPath.toLowerCase())) {
+            return { folder, filename: file };
+          }
+        }
+      }
     }
-
-    const classesList: string[] = [];
-    const methodsMap = new Map<string, string>();
-    const propertiesMap = new Map<string, string>();
-
-    store.classesData.forEach((node: any) => {
-      const cls = node.data;
-      if (!cls) return;
-      classesList.push(cls.name);
-      
-      if (Array.isArray(cls.methods)) {
-        cls.methods.forEach((m: any) => {
-          if (m.name && m.name !== 'constructor') {
-            methodsMap.set(m.name, cls.name);
-          }
-        });
-      }
-      if (Array.isArray(cls.properties)) {
-        cls.properties.forEach((p: any) => {
-          if (p.name) {
-            propertiesMap.set(p.name, cls.name);
-          }
-        });
-      }
-    });
-
-    classesList.sort((a, b) => b.length - a.length);
-    const sortedMethods = Array.from(methodsMap.keys()).sort((a, b) => b.length - a.length);
-    const sortedProperties = Array.from(propertiesMap.keys()).sort((a, b) => b.length - a.length);
-
-    // Tokenize code blocks
-    const codeRegex = /(```[\s\S]*?```|`[^`\n]*?`)/g;
-    const parts = text.split(codeRegex);
-
-    const placeholders: { [key: string]: string } = {};
-    let placeholderCounter = 0;
-
-    for (let i = 0; i < parts.length; i++) {
-      if (parts[i].startsWith('`')) {
-        continue;
-      }
-
-      let segment = parts[i];
-
-      // Match class names
-      classesList.forEach(clsName => {
-        const classRegex = new RegExp(`\\b${clsName}\\b`, 'g');
-        segment = segment.replace(classRegex, () => {
-          const id = `@@@CLASS_PH_${placeholderCounter++}@@@`;
-          placeholders[id] = `<span class="entity-link class-link" data-class="${clsName}">${clsName}</span>`;
-          return id;
-        });
-      });
-
-      // Match methods with ()
-      sortedMethods.forEach(methodName => {
-        const clsName = methodsMap.get(methodName);
-        const regex = new RegExp(`\\b${methodName}\\(\\)` , 'g');
-        segment = segment.replace(regex, () => {
-          const id = `@@@METHOD_PH_${placeholderCounter++}@@@`;
-          placeholders[id] = `<span class="entity-link method-link" data-class="${clsName}" data-method="${methodName}">${methodName}()</span>`;
-          return id;
-        });
-      });
-
-      // Match methods without ()
-      sortedMethods.forEach(methodName => {
-        const clsName = methodsMap.get(methodName);
-        const regex = new RegExp(`\\b${methodName}\\b` , 'g');
-        segment = segment.replace(regex, () => {
-          const id = `@@@METHOD_PH_${placeholderCounter++}@@@`;
-          placeholders[id] = `<span class="entity-link method-link" data-class="${clsName}" data-method="${methodName}">${methodName}</span>`;
-          return id;
-        });
-      });
-
-      // Match properties
-      sortedProperties.forEach(propertyName => {
-        const clsName = propertiesMap.get(propertyName);
-        const regex = new RegExp(`\\b${propertyName}\\b` , 'g');
-        segment = segment.replace(regex, () => {
-          const id = `@@@PROP_PH_${placeholderCounter++}@@@`;
-          placeholders[id] = `<span class="entity-link property-link" data-class="${clsName}" data-property="${propertyName}">${propertyName}</span>`;
-          return id;
-        });
-      });
-
-      // Restore placeholders
-      let restored = true;
-      while (restored) {
-        restored = false;
-        Object.keys(placeholders).forEach(id => {
-          if (segment.includes(id)) {
-            segment = segment.replace(id, placeholders[id]);
-            restored = true;
-          }
-        });
-      }
-
-      parts[i] = segment;
-    }
-
-    return parts.join('');
+    return null;
   };
+
+
 
   const handleChatClick = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
+
+    // 1. Handle Copy Code Button Click (delegated event)
+    const copyBtn = target.closest('.code-copy-btn') as HTMLButtonElement;
+    if (copyBtn) {
+      e.preventDefault();
+      const wrapper = copyBtn.closest('.code-block-wrapper');
+      if (wrapper) {
+        const pre = wrapper.querySelector('pre');
+        if (pre) {
+          const codeElement = pre.querySelector('code');
+          const codeText = (codeElement ? codeElement.textContent : pre.textContent) || '';
+          const cleanText = codeText.replace(/\n$/, '');
+          
+          const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+          const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+          
+          navigator.clipboard.writeText(cleanText).then(() => {
+            copyBtn.classList.add('copied');
+            copyBtn.innerHTML = `${checkIcon} <span>Copied!</span>`;
+            
+            setTimeout(() => {
+              copyBtn.classList.remove('copied');
+              copyBtn.innerHTML = `${copyIcon} <span>Copy</span>`;
+            }, 2000);
+          }).catch(err => {
+            console.error('Failed to copy: ', err);
+            ElMessage.error(store.t('Failed to copy to clipboard.'));
+          });
+        }
+      }
+      return;
+    }
+
+    // 2. Handle Standard Anchors with custom URL schemes
+    const anchor = target.closest('a') as HTMLAnchorElement;
+    if (anchor) {
+      const href = anchor.getAttribute('href') || '';
+      
+      if (href.startsWith('file:///')) {
+        e.preventDefault();
+        const filePath = href.replace('file:///', '');
+        const fileMatch = findFileMatch(filePath);
+        if (fileMatch) {
+          store.setFolder(fileMatch.folder);
+          store.setItem(fileMatch.filename);
+          const encodedDb = fileMatch.folder && fileMatch.folder !== 'root' ? fileMatch.folder.replace(/\//g, '_') : 'root';
+          router.push(`/${store.activeConnection}/explorer/${encodedDb}/${fileMatch.filename}`);
+          ElMessage.success(store.t('Opening file: {file}').replace('{file}', fileMatch.filename));
+        } else {
+          const filename = filePath.split('/').pop() || '';
+          store.setItem(filename);
+          router.push(`/${store.activeConnection}/explorer/root/${filename}`);
+        }
+        return;
+      }
+      
+      if (href.startsWith('class:')) {
+        e.preventDefault();
+        const clsName = href.replace('class:', '');
+        store.activeTab = 'mindmap';
+        store.selectedMindmapNode = clsName;
+        ElMessage.success(store.t('Inspecting codebase class: {class}').replace('{class}', clsName));
+        return;
+      }
+      
+      if (href.startsWith('method:')) {
+        e.preventDefault();
+        const methodVal = href.replace('method:', '');
+        const dotIdx = methodVal.indexOf('.');
+        if (dotIdx !== -1) {
+          const clsName = methodVal.substring(0, dotIdx);
+          const methodName = methodVal.substring(dotIdx + 1);
+          store.activeTab = 'mindmap';
+          store.selectedMindmapNode = clsName;
+          store.setSelectedMethod(methodName);
+          ElMessage.success(store.t('Inspecting method: {method}').replace('{method}', methodName));
+        } else {
+          store.setSelectedMethod(methodVal);
+        }
+        return;
+      }
+      
+      if (href.startsWith('prop:')) {
+        e.preventDefault();
+        const propVal = href.replace('prop:', '');
+        const dotIdx = propVal.indexOf('.');
+        if (dotIdx !== -1) {
+          const clsName = propVal.substring(0, dotIdx);
+          const propName = propVal.substring(dotIdx + 1);
+          store.activeTab = 'mindmap';
+          store.selectedMindmapNode = clsName;
+          store.setSelectedMethod(propName);
+          ElMessage.success(store.t('Inspecting property: {prop}').replace('{prop}', propName));
+        } else {
+          store.setSelectedMethod(propVal);
+        }
+        return;
+      }
+    }
+
+    // 3. Handle Entity Links Click
     const link = target.closest('.entity-link') as HTMLElement;
     if (!link) return;
     
@@ -126,6 +140,18 @@ export function useChatRenderer() {
     const clsName = link.dataset.class;
     const methodName = link.dataset.method;
     const propName = link.dataset.property;
+    const folderName = link.dataset.folder;
+    const fileName = link.dataset.file;
+
+    // Handle file click and navigation
+    if (folderName && fileName) {
+      store.setFolder(folderName);
+      store.setItem(fileName);
+      const encodedDb = folderName && folderName !== 'root' ? folderName.replace(/\//g, '_') : 'root';
+      router.push(`/${store.activeConnection}/explorer/${encodedDb}/${fileName}`);
+      ElMessage.success(store.t('Opening file: {file}').replace('{file}', fileName));
+      return;
+    }
     
     if (clsName) {
       store.activeTab = 'mindmap';
@@ -174,6 +200,16 @@ export function useChatRenderer() {
 
       const playbookBlocks: Record<string, string> = {};
       let placeholderCounter = 0;
+
+      // 1. Replace Markdown links referencing playbooks (to avoid nested rendering inside href attributes)
+      clean = clean.replace(/\[([^\]]*skills\/[\w_.-]+\.md)\]\(file:\/\/[^)]+\)/gi, (_match, textContent) => {
+        const cleanText = textContent.replace(/^[📄\s]+/u, '');
+        const id = `@@@PLAYBOOK_PH_${placeholderCounter++}@@@`;
+        playbookBlocks[id] = `<span class="entity-link playbook-link" data-path="skills/${cleanText.replace(/^skills\//, '')}">📄 skills/${cleanText.replace(/^skills\//, '')}</span>`;
+        return id;
+      });
+
+      // 2. Replace plain playbook paths
       clean = clean.replace(/\b(skills\/[\w_.-]+\.md)\b/g, (match, path) => {
         const id = `@@@PLAYBOOK_PH_${placeholderCounter++}@@@`;
         playbookBlocks[id] = `<span class="entity-link playbook-link" data-path="${path}">📄 ${match}</span>`;
@@ -202,8 +238,7 @@ export function useChatRenderer() {
         return `\n\n${ph}\n\n`;
       });
 
-      const linkified = linkifyEntities(clean);
-      let rendered = md.render(linkified);
+      let rendered = md.render(clean);
 
       Object.keys(playbookBlocks).forEach(ph => {
         rendered = rendered.replace(new RegExp(`<p>${ph}</p>`, 'g'), playbookBlocks[ph]);
@@ -216,6 +251,12 @@ export function useChatRenderer() {
       Object.keys(chartBlocks).forEach(ph => {
         rendered = rendered.replace(new RegExp(`<p>${ph}</p>`, 'g'), chartBlocks[ph]);
         rendered = rendered.replace(new RegExp(ph, 'g'), chartBlocks[ph]);
+      });
+
+      // Wrap standard code blocks and inject Copy button
+      const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+      rendered = rendered.replace(/<pre><code([\s\S]*?)>([\s\S]*?)<\/code><\/pre>/gi, (_match: string, attrs: string, codeContent: string) => {
+        return `<div class="code-block-wrapper"><pre><code${attrs}>${codeContent}</code></pre><button class="code-copy-btn">${copyIcon} <span>Copy</span></button></div>`;
       });
 
       return rendered;
@@ -411,6 +452,7 @@ export function useChatRenderer() {
         el.innerHTML = `<div class="render-error">⚠️ <strong>${store.t('Chart Render Error:')}</strong> ${store.t('Invalid JSON config.')}</div>`;
       }
     }
+
     if (onDone) onDone();
   };
 
