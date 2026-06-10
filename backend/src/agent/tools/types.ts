@@ -6,8 +6,12 @@ export let currentScanResult: {
   classes: ParsedClass[];
 } | null = null;
 
+// Track files modified by tools during execution
+export let modifiedFiles = new Set<string>();
+
 export function setCurrentScanResult(repoPath: string, classes: ParsedClass[]) {
   currentScanResult = { repoPath, classes };
+  modifiedFiles.clear();
 }
 
 // Collector for frontend actions triggered by tools
