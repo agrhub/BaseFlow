@@ -42,6 +42,30 @@ const fs = __importStar(require("fs"));
 const helpers_1 = require("./helpers");
 const GeminiService_1 = require("../services/GeminiService");
 const prompts_1 = require("../prompts/prompts");
+const PENDO_TRACK_URL = 'https://data.pendo.io/data/track';
+const PENDO_INTEGRATION_KEY = '3f27a34f-5946-4ee0-b3ec-2763bcea8e49';
+async function pendoTrack(event, properties = {}) {
+    try {
+        await fetch(PENDO_TRACK_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-pendo-integration-key': PENDO_INTEGRATION_KEY
+            },
+            body: JSON.stringify({
+                type: 'track',
+                event,
+                visitorId: 'system',
+                accountId: 'system',
+                timestamp: Date.now(),
+                properties
+            })
+        });
+    }
+    catch (e) {
+        console.error('Pendo track error:', e);
+    }
+}
 const router = express_1.default.Router();
 // 1. GET Recurse Markdown files list
 router.get('/:conn/documents', async (req, res) => {
@@ -179,6 +203,10 @@ router.post('/:conn/documents/generate-skill', async (req, res) => {
             fs.mkdirSync(parentDir, { recursive: true });
         }
         fs.writeFileSync(fullSkillPath, skillContent, 'utf-8');
+        pendoTrack('skill_generated', {
+            connection_name: conn,
+            source_document_path: docPath || ''
+        });
         res.json({
             success: true,
             filePath: targetSkillPath,
@@ -241,6 +269,11 @@ router.post('/:conn/documents/content', async (req, res) => {
             fs.mkdirSync(parentDir, { recursive: true });
         }
         fs.writeFileSync(safePath, content, 'utf-8');
+        pendoTrack('document_file_saved', {
+            connection_name: conn,
+            file_path: docPath,
+            content_length: content.length
+        });
         res.json({ success: true, msg: 'File saved successfully' });
     }
     catch (error) {

@@ -40,3 +40,5 @@ frontend/package-lock.json
 IDE_FIX_GUIDE.md
 package-lock.json
 frontend/test.js
+backend/scratch_*.js
+Mindmapv5.vue

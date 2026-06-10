@@ -120,8 +120,6 @@ import ChatMessageBubble from './ChatMessageBubble.vue';
 import MentionListPopup from './MentionListPopup.vue';
 import ChatInputPanel from './ChatInputPanel.vue';
 
-declare var pendo: { trackAgent: (eventType: string, metadata: object) => void };
-
 // --- State ---
 const inputMsg = ref('');
 const thinking = ref(false);
