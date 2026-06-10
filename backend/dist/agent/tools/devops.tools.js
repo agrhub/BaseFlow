@@ -318,6 +318,7 @@ exports.writeWorkspaceFileTool = new adk_1.FunctionTool({
                 fs.mkdirSync(parentDir, { recursive: true });
             }
             fs.writeFileSync(fullPath, content, 'utf-8');
+            types_1.modifiedFiles.add(filePath);
             types_1.pendingActions.push({
                 type: 'PLAYBOOK_CREATED',
                 payload: { filePath }

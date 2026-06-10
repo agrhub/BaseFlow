@@ -100,6 +100,8 @@ if (frontendDist) {
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api/')) {
       res.sendFile(path.join(frontendDist, 'index.html'));
+    } else {
+      res.status(404).json({ error: 'API route not found' });
     }
   });
 } else {
