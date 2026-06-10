@@ -100,6 +100,13 @@ const saveEdit = async () => {
     });
     if (res.data.success) {
       ElMessage.success(store.t('Document saved successfully!'));
+      if (typeof pendo !== 'undefined') {
+        pendo.track('playbook_reviewed', {
+          connection_name: store.activeConnection,
+          document_path: store.playbookToReview.filePath,
+          content_length: editContent.value.length
+        });
+      }
       store.playbookToReview.content = editContent.value;
       isEditing.value = false;
     }

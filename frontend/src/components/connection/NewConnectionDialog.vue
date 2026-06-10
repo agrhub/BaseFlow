@@ -204,6 +204,14 @@ const saveConnection = async () => {
         options
       });
       ElMessage.success(store.t('Connection successfully updated'));
+      if (typeof pendo !== 'undefined') {
+        pendo.track('connection_updated', {
+          connection_name: connForm.name,
+          connection_type: connForm.type,
+          branch: connForm.branch || '',
+          has_git_token: !!connForm.gitToken
+        });
+      }
     } else {
       await axios.post('/api/connections/add', {
         name: connForm.name,
@@ -211,6 +219,15 @@ const saveConnection = async () => {
         options
       });
       ElMessage.success(store.t('Connection successfully added'));
+      if (typeof pendo !== 'undefined') {
+        pendo.track('connection_created', {
+          connection_name: connForm.name,
+          connection_type: connForm.type,
+          branch: connForm.branch || '',
+          has_git_token: !!connForm.gitToken,
+          has_mcp_server: !!connForm.gitMcpServer
+        });
+      }
     }
     visible.value = false;
     emit('saved');

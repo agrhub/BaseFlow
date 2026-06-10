@@ -96,6 +96,11 @@ const handleDelete = (name: string) => {
     try {
       await axios.post('/api/connections/delete', { curr_config: name });
       ElMessage.success(store.t('Connection successfully deleted'));
+      if (typeof pendo !== 'undefined') {
+        pendo.track('connection_deleted', {
+          connection_name: name
+        });
+      }
       store.fetchConnections();
     } catch (e) {
       ElMessage.error(store.t('Error deleting connection'));

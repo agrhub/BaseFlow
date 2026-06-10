@@ -207,6 +207,12 @@ const syncCodebase = async () => {
     const res = await axios.post(`/api/${store.activeConnection}/sync`);
     if (res.data.success) {
       ElMessage.success(store.t('Codebase successfully re-analyzed!'));
+      if (typeof pendo !== 'undefined') {
+        pendo.track('codebase_synced', {
+          connection_name: store.activeConnection,
+          success: true
+        });
+      }
       await fetchStats();
       await store.fetchSidebar();
     }
@@ -224,6 +230,12 @@ const pullRepository = async () => {
     const res = await axios.post(`/api/${store.activeConnection}/pull`);
     if (res.data.success) {
       ElMessage.success(store.t('Repository successfully updated and re-analyzed!'));
+      if (typeof pendo !== 'undefined') {
+        pendo.track('repository_pulled', {
+          connection_name: store.activeConnection,
+          success: true
+        });
+      }
       await fetchStats();
       await store.fetchSidebar();
     }
@@ -490,6 +502,12 @@ const regenerateArchitecture = async () => {
     const res = await axios.post(`/api/${store.activeConnection}/architecture-diagrams/regenerate`);
     await renderDiagrams(res.data);
     ElMessage.success(store.t('Architecture diagrams regenerated successfully!'));
+    if (typeof pendo !== 'undefined') {
+      pendo.track('architecture_diagrams_regenerated', {
+        connection_name: store.activeConnection,
+        success: true
+      });
+    }
   } catch (e) {
     console.error('Failed to regenerate architecture diagrams:', e);
     ElMessage.error(store.t('Failed to regenerate architecture diagrams.'));
@@ -621,6 +639,13 @@ const generateDocumentSkill = async () => {
     });
     if (res.data.success) {
       ElMessage.success(store.t('AI agent playbook created at: {path}').replace('{path}', res.data.filePath));
+      if (typeof pendo !== 'undefined') {
+        pendo.track('skill_generated', {
+          connection_name: store.activeConnection,
+          source_document_path: selectedDocument.value,
+          generated_skill_path: res.data.filePath
+        });
+      }
       await fetchDocuments(true);
       await store.fetchSidebar();
       await selectDocument(res.data.filePath);
@@ -635,6 +660,12 @@ const generateDocumentSkill = async () => {
 
 const verifyCodebaseWithMCP = async () => {
   if (!selectedDocument.value) return;
+  if (typeof pendo !== 'undefined') {
+    pendo.track('codebase_verification_initiated', {
+      connection_name: store.activeConnection,
+      document_path: selectedDocument.value
+    });
+  }
   store.autoSendNextCommand = true;
   store.chatSidebarOpen = true;
   store.chatInput = `Check my repository to verify if the implementation matches the requirements outlined in the local file ${selectedDocument.value}. Please use your file reading tools to examine the contents of this file first, then identify discrepancies and recommend fixes.`;
@@ -650,7 +681,14 @@ const handleAskAgent = (doc: string) => {
 const publishSkillToCatalog = () => {
   if (!selectedDocument.value) return;
   const provider = store.devopsInfo?.provider || 'gitlab';
-  
+  if (typeof pendo !== 'undefined') {
+    pendo.track('skill_published_to_catalog', {
+      connection_name: store.activeConnection,
+      provider: provider,
+      document_path: selectedDocument.value
+    });
+  }
+
   store.autoSendNextCommand = true;
   store.chatSidebarOpen = true;
   

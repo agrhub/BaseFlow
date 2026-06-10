@@ -235,6 +235,13 @@ const saveTokens = async () => {
       gitMcpServer: tokenForm.gitMcpServer
     });
     ElMessage.success(store.t('DevOps credentials saved successfully.'));
+    if (typeof pendo !== 'undefined') {
+      pendo.track('devops_credentials_saved', {
+        connection_name: store.activeConnection,
+        provider: info.value.provider || '',
+        has_mcp_server: !!tokenForm.gitMcpServer
+      });
+    }
     
     await fetchInfo();
     await store.fetchDevOpsInfo();
@@ -289,6 +296,14 @@ const loadHealthScore = async () => {
 // AI Agent actions dynamically adapting to provider names
 const triageIssue = (issue: any) => {
   const numOnly = issue.number.replace('#', '').replace('!', '');
+  if (typeof pendo !== 'undefined') {
+    pendo.track('issue_triage_initiated', {
+      connection_name: store.activeConnection,
+      provider: info.value.provider || '',
+      issue_number: issue.number,
+      issue_title: (issue.title || '').substring(0, 100)
+    });
+  }
   store.chatInput = `Resolve ${providerLabel.value} Issue ${issue.number}: "${issue.title}".
 Description: "${issue.description || 'No description'}"
 Call 'resolve_issue_with_ai' with issueTitle="${issue.title}", issueDescription="${issue.description || ''}", issueNumber="${numOnly}", provider="${info.value.provider}".
@@ -299,6 +314,14 @@ After generating the fix playbook, offer to call 'publish_skill_to_catalog' to p
 
 const autoFixAndCreateMR = (issue: any) => {
   const numOnly = issue.number.replace('#', '').replace('!', '');
+  if (typeof pendo !== 'undefined') {
+    pendo.track('auto_fix_mr_initiated', {
+      connection_name: store.activeConnection,
+      provider: info.value.provider || '',
+      issue_number: issue.number,
+      issue_title: (issue.title || '').substring(0, 100)
+    });
+  }
   store.chatInput = `Auto-fix ${providerLabel.value} Issue ${issue.number}: "${issue.title}".
 Description: "${issue.description || 'No description'}"
 Please:
@@ -312,6 +335,15 @@ const reviewMergeRequest = async (mr: any) => {
   const pName = providerLabel.value;
   const verb = info.value.provider === 'github' ? 'Pull Request' : 'Merge Request';
   const numOnly = mr.number.replace('#', '').replace('!', '');
+  if (typeof pendo !== 'undefined') {
+    pendo.track('mr_review_initiated', {
+      connection_name: store.activeConnection,
+      provider: info.value.provider || '',
+      mr_number: mr.number,
+      source_branch: mr.source_branch || '',
+      target_branch: mr.target_branch || ''
+    });
+  }
   
   const loadingMsg = ElMessage({ message: store.t('Fetching diff from ' + pName + '...'), type: 'info', duration: 0 });
   
@@ -357,6 +389,14 @@ const reviewPlaybook = async (id: string) => {
 
 const analyzePipeline = (pipe: any) => {
   const word = info.value.provider === 'github' ? 'Workflow Run' : 'Pipeline';
+  if (typeof pendo !== 'undefined') {
+    pendo.track('pipeline_analysis_initiated', {
+      connection_name: store.activeConnection,
+      provider: info.value.provider || '',
+      pipeline_id: String(pipe.id),
+      branch: pipe.ref || ''
+    });
+  }
   store.chatInput = `Analyze the failed ${providerLabel.value} ${word} #${pipe.id} on branch "${pipe.ref}".
 Call 'analyze_pipeline_failure' with pipelineId="${pipe.id}", ref="${pipe.ref}", provider="${info.value.provider}".
 Also try fetching the job log via ${providerLabel.value} MCP tools to provide full log context to the tool. After analysis, highlight any affected classes on the mindmap.`;
@@ -395,6 +435,11 @@ Call 'audit_security_vulnerabilities' passing the names of the vulnerable classe
 };
 
 const triggerOnboarding = () => {
+  if (typeof pendo !== 'undefined') {
+    pendo.track('onboarding_guide_triggered', {
+      connection_name: store.activeConnection
+    });
+  }
   store.chatInput = `I am a new developer onboarding to this project.
 Based on the repository metadata, scanned classes, and readme info, generate a comprehensive Codebase Developer Onboarding Guide.
 Explain the main entry points, the overall architecture, tech stack, directory layouts, and how to start modifying code.`;

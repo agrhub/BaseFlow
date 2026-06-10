@@ -493,6 +493,15 @@ const sendChat = async (userText: string) => {
                    axios.post(`/api/${store.activeConnection}/devops/auto-create-mr`, act.payload)
                      .then((mrRes: any) => {
                        ElMessage.success(store.t('MR created successfully!'));
+                       if (typeof pendo !== 'undefined') {
+                         pendo.track('auto_mr_created', {
+                           connection_name: store.activeConnection,
+                           provider: store.devopsInfo?.provider || '',
+                           issue_iid: act.payload?.issueIid || '',
+                           branch_name: act.payload?.branchName || '',
+                           mr_url: mrRes.data?.mrUrl || ''
+                         });
+                       }
                        messages.value.push({ role: 'assistant', content: `✅ **Merge Request Created!**\n\n[View on ${store.devopsInfo?.provider || 'provider'}](${mrRes.data.mrUrl})` });
                        scrollBottom();
                      })
@@ -507,6 +516,13 @@ const sendChat = async (userText: string) => {
                    axios.post(`/api/${store.activeConnection}/devops/submit-mr-review`, act.payload)
                      .then(() => {
                        ElMessage.success(store.t('Review submitted successfully!'));
+                       if (typeof pendo !== 'undefined') {
+                         pendo.track('mr_review_submitted', {
+                           connection_name: store.activeConnection,
+                           provider: store.devopsInfo?.provider || '',
+                           mr_iid: act.payload?.mrIid || ''
+                         });
+                       }
                        messages.value.push({ role: 'assistant', content: `✅ **Code Review Submitted!** I have posted the summary and inline comments to the Merge Request.` });
                        scrollBottom();
                      })
@@ -520,6 +536,13 @@ const sendChat = async (userText: string) => {
                    store.vulnerableNodes = act.payload.classes || [];
                    store.activeTab = 'mindmap';
                    ElMessage.warning({ message: store.t('Security Audit detected vulnerabilities! Nodes highlighted in red.'), duration: 5000 });
+                   if (typeof pendo !== 'undefined') {
+                     pendo.track('security_audit_completed', {
+                       connection_name: store.activeConnection,
+                       vulnerable_classes_count: (act.payload.classes || []).length,
+                       vulnerable_class_names: (act.payload.classes || []).slice(0, 10).join(', ')
+                     });
+                   }
                    messages.value.push({ role: 'assistant', content: `🚨 **Security Audit Complete!**\n\nI have highlighted the vulnerable components in red on the mindmap view.` });
                    scrollBottom();
                  } else if (act.type === 'CATALOG_READY') {
@@ -592,12 +615,21 @@ const handleRetry = (idx: number) => {
 };
 
 const handleClearChat = async () => {
+  const prevMessageCount = messages.value.length;
+  const prevSessionId = sessionId.value;
   try {
     await axios.delete('/api/agent/session');
     messages.value = [];
     sessionId.value = Math.random().toString(36).substring(2, 15);
     currentSuggestions.value = [];
     ElMessage.success(store.t('Chat history cleared.'));
+    if (typeof pendo !== 'undefined') {
+      pendo.track('chat_session_cleared', {
+        connection_name: store.activeConnection || '',
+        session_id: prevSessionId,
+        message_count: prevMessageCount
+      });
+    }
   } catch (e) {
     ElMessage.error(store.t('Failed to clear session.'));
   }

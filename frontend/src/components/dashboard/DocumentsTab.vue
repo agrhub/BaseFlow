@@ -196,6 +196,12 @@ const copyDocContent = () => {
   if (navigator.clipboard && props.docContent) {
     navigator.clipboard.writeText(props.docContent);
     ElMessage.success(store.t('Copied to clipboard!'));
+    if (typeof pendo !== 'undefined') {
+      pendo.track('document_copied', {
+        connection_name: store.activeConnection,
+        document_path: props.selectedDocument
+      });
+    }
   }
   else{
 	ElMessage.error(store.t('Failed to copy document!'));
@@ -204,15 +210,23 @@ const copyDocContent = () => {
 
 const downloadDoc = () => {
   if (!props.docContent || !props.selectedDocument) return;
+  const fileName = props.selectedDocument.split('/').pop() || 'document.md';
   const blob = new Blob([props.docContent], { type: 'text/markdown' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = props.selectedDocument.split('/').pop() || 'document.md';
+  a.download = fileName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  if (typeof pendo !== 'undefined') {
+    pendo.track('document_downloaded', {
+      connection_name: store.activeConnection,
+      document_path: props.selectedDocument,
+      file_name: fileName
+    });
+  }
 };
 
 const docChatMessages = ref<Array<{ sender: 'user' | 'assistant'; text: string }>>([]);
