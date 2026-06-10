@@ -399,7 +399,7 @@ const sendChat = async (userText: string) => {
   const promptMessageId = crypto.randomUUID();
   if (typeof pendo !== 'undefined') {
     pendo.trackAgent("prompt", {
-      agentId: "CVp8Kt6i3RoVy2qbAxrkE7aVL7Q",
+      agentId: "jq5rKorbScvRlbT94-yDkZduQvw",
       conversationId: sessionId.value,
       messageId: promptMessageId,
       content: userText
@@ -465,7 +465,7 @@ const sendChat = async (userText: string) => {
             } else if (data.done) {
                if (typeof pendo !== 'undefined') {
                  pendo.trackAgent("agent_response", {
-                   agentId: "CVp8Kt6i3RoVy2qbAxrkE7aVL7Q",
+                   agentId: "jq5rKorbScvRlbT94-yDkZduQvw",
                    conversationId: sessionId.value,
                    messageId: crypto.randomUUID(),
                    content: messages.value[agentMsgIndex].content
@@ -578,7 +578,7 @@ const handleRetry = (idx: number) => {
       messages.value.splice(idx, 1);
       if (typeof pendo !== 'undefined') {
         pendo.trackAgent("user_reaction", {
-          agentId: "CVp8Kt6i3RoVy2qbAxrkE7aVL7Q",
+          agentId: "jq5rKorbScvRlbT94-yDkZduQvw",
           conversationId: sessionId.value,
           messageId: crypto.randomUUID(),
           content: "retry"
