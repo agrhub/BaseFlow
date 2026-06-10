@@ -262,16 +262,6 @@ const loadHealthScore = async () => {
   try {
     const res = await axios.get(`/api/${store.activeConnection}/devops/health-score`);
     healthScore.value = res.data;
-    if (typeof pendo !== 'undefined') {
-      pendo.track('devops_health_score_loaded', {
-        connection_name: store.activeConnection,
-        health_score: res.data?.score || 0,
-        open_issues_count: res.data?.breakdown?.issues?.count || 0,
-        open_mrs_count: res.data?.breakdown?.mergeRequests?.count || 0,
-        pipeline_count: res.data?.breakdown?.pipelines?.total || 0,
-        provider: res.data?.provider || ''
-      });
-    }
     // Only use health score counts as a fallback if child list components haven't
     // reported their accurate paginated totals yet.
     if (healthScore.value?.breakdown) {
@@ -366,15 +356,6 @@ Also try fetching the job log via ${providerLabel.value} MCP tools to provide fu
 
 const triggerHealthAnalysis = () => {
   if (!healthScore.value) return;
-  if (typeof pendo !== 'undefined') {
-    pendo.track('devops_health_analysis_triggered', {
-      connection_name: store.activeConnection,
-      health_score: healthScore.value?.score || 0,
-      open_issues_count: healthScore.value?.breakdown?.issues?.count || 0,
-      open_mrs_count: healthScore.value?.breakdown?.mergeRequests?.count || 0,
-      provider: healthScore.value?.provider || ''
-    });
-  }
   const hs = healthScore.value;
   store.chatInput = `Generate a detailed DevOps Health Report. Call 'generate_devops_health_score' with openIssues=${hs.breakdown.issues.count}, openMRs=${hs.breakdown.mergeRequests.count}, recentPipelines=${JSON.stringify(hs.recentPipelines?.slice(0, 10) || [])}, provider="${hs.provider}". Then provide actionable recommendations and render a chart.`;
   store.autoSendNextCommand = true;
@@ -382,11 +363,6 @@ const triggerHealthAnalysis = () => {
 };
 
 const triggerSecurityAudit = () => {
-  if (typeof pendo !== 'undefined') {
-    pendo.track('security_audit_triggered', {
-      connection_name: store.activeConnection
-    });
-  }
   store.chatInput = `Run a Codebase Security Audit.
 Review the mindmap node paths and structural code to find potential security risks (like auth controllers, database connectors, unprotected routes).
 Call 'audit_security_vulnerabilities' passing the names of the vulnerable classes and a summary of why they are risky. This will highlight them in RED on the mindmap.`;
