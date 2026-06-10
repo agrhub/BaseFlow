@@ -254,15 +254,6 @@ const fetchReadmeAnalysis = async () => {
   try {
     const res = await axios.get(`/api/${store.activeConnection}/readme-analysis`);
     readmeAnalysis.value = res.data;
-    if (typeof pendo !== 'undefined') {
-      pendo.track('readme_analysis_completed', {
-        connection_name: store.activeConnection,
-        project_name: res.data?.projectName || '',
-        complexity_score: res.data?.complexityScore || 0,
-        tech_stack_count: (res.data?.techStack || []).length,
-        feature_count: (res.data?.features || []).length
-      });
-    }
   } catch (e) {
     console.error('Failed to fetch readme analysis:', e);
   } finally {
@@ -277,13 +268,6 @@ const fetchGraph = async () => {
     graphNodes.value = res.data.nodes || [];
     graphEdges.value = res.data.edges || [];
     store.classesData = markRaw(res.data.nodes || []);
-    if (typeof pendo !== 'undefined') {
-      pendo.track('codebase_parsed', {
-        connection_name: store.activeConnection,
-        node_count: (res.data.nodes || []).length,
-        edge_count: (res.data.edges || []).length
-      });
-    }
   } catch (e) {
     console.error('Failed to fetch mindmap graph:', e);
   }
@@ -315,12 +299,6 @@ const fetchClassAnalysis = async (className: string) => {
   try {
     const res = await axios.post(`/api/${store.activeConnection}/class-analysis`, { className });
     classAnalysisText.value = res.data.analysis;
-    if (typeof pendo !== 'undefined') {
-      pendo.track('class_ai_analysis_completed', {
-        connection_name: store.activeConnection,
-        class_name: className
-      });
-    }
   } catch (e) {
     console.error('Failed to fetch class analysis:', e);
     classAnalysisText.value = store.t('Failed to load AI analysis for this component.');
@@ -467,13 +445,6 @@ const fetchArchitectureDiagrams = async (force = false) => {
   classDiagramSvg.value = '';
   try {
     const res = await axios.get(`/api/${store.activeConnection}/architecture-diagrams`);
-    if (typeof pendo !== 'undefined') {
-      pendo.track('architecture_diagrams_generated', {
-        connection_name: store.activeConnection,
-        has_arch_diagram: !!res.data?.architecture,
-        has_class_diagram: !!res.data?.classInteraction
-      });
-    }
     await renderDiagrams(res.data);
   } catch (e) {
     console.error('Failed to fetch architecture diagrams:', e);
@@ -598,12 +569,6 @@ const analyzeDocument = async (docPath: string, content: string) => {
       content
     });
     docAnalysis.value = res.data;
-    if (typeof pendo !== 'undefined') {
-      pendo.track('document_analyzed', {
-        connection_name: store.activeConnection,
-        document_path: docPath
-      });
-    }
   } catch (e) {
     console.error('Failed to analyze document:', e);
   } finally {

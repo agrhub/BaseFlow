@@ -13,6 +13,3 @@ declare module 'markdown-it' {
 
 declare module 'element-plus';
 declare module 'vue-router';
-
-declare var pendo: any;
-
