@@ -41,6 +41,7 @@ exports.zipCloneOrPull = zipCloneOrPull;
 exports.zipRefresh = zipRefresh;
 exports.parseGitUrl = parseGitUrl;
 exports.resolveRepoPath = resolveRepoPath;
+exports.resolveCachePath = resolveCachePath;
 exports.getOrScanRepo = getOrScanRepo;
 exports.generateReadmeAnalysis = generateReadmeAnalysis;
 exports.performCompleteAnalysis = performCompleteAnalysis;
@@ -546,6 +547,18 @@ function resolveRepoPath(profile) {
     }
     // For remote URL, return temp folder path
     const repoName = uri.split('/').pop()?.replace('.git', '') || 'temp-repo';
+    if (fs.existsSync(exports.tempDir)) {
+        try {
+            const items = fs.readdirSync(exports.tempDir);
+            const matched = items.find(item => item.toLowerCase() === repoName.toLowerCase());
+            if (matched) {
+                return path.join(exports.tempDir, matched);
+            }
+        }
+        catch (e) {
+            console.warn(`Failed to read tempDir for case-insensitive match:`, e);
+        }
+    }
     return path.join(exports.tempDir, repoName);
 }
 // Helper to recursively find the latest file modification time in the repository
@@ -578,6 +591,24 @@ function getRepoLastModified(dirPath) {
     walk(dirPath);
     return maxMtime;
 }
+// Resolve Cache Path
+function resolveCachePath(profileName) {
+    const cachePath = path.join(exports.tempDir, `${profileName}_cache.json`);
+    if (!fs.existsSync(cachePath) && fs.existsSync(exports.tempDir)) {
+        try {
+            const items = fs.readdirSync(exports.tempDir);
+            const targetName = `${profileName}_cache.json`.toLowerCase();
+            const matched = items.find(item => item.toLowerCase() === targetName);
+            if (matched) {
+                return path.join(exports.tempDir, matched);
+            }
+        }
+        catch (e) {
+            console.warn(`Failed to read tempDir for case-insensitive cache lookup:`, e);
+        }
+    }
+    return cachePath;
+}
 // Scan repository utility
 async function getOrScanRepo(profileName) {
     if (repoCache.has(profileName)) {
@@ -592,7 +623,7 @@ async function getOrScanRepo(profileName) {
     // If remote and does not exist, download ZIP
     if (profile.options?.type !== 'local' && !fs.existsSync(targetPath)) {
         console.log(`Auto-downloading remote ZIP for ${profile.uri} to ${targetPath}...`);
-        const cachePath = path.join(exports.tempDir, `${profileName}_cache.json`);
+        const cachePath = resolveCachePath(profileName);
         try {
             await zipCloneOrPull(profile.uri, targetPath, profile.options, cachePath);
         }
@@ -602,7 +633,7 @@ async function getOrScanRepo(profileName) {
         }
     }
     // Check for cached scan result file
-    const cachePath = path.join(exports.tempDir, `${profileName}_cache.json`);
+    const cachePath = resolveCachePath(profileName);
     const useCache = fs.existsSync(cachePath);
     if (!useCache && !fs.existsSync(targetPath)) {
         throw new Error(`Path does not exist: ${targetPath}`);

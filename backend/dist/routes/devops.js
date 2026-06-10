@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -6,6 +39,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const ConnectionStore_1 = require("../services/ConnectionStore");
 const helpers_1 = require("./helpers");
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
+const types_1 = require("../agent/tools/types");
 const router = express_1.default.Router();
 const getDevOpsToken = (devops) => {
     return devops?.profile?.options?.gitToken;
@@ -364,6 +400,360 @@ router.post('/:conn/devops/analyze-pipeline', async (req, res) => {
         });
     }
     catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// 14. Get PR/MR diff
+router.get('/:conn/devops/mr-diff/:iid', async (req, res) => {
+    const { conn, iid } = req.params;
+    try {
+        const devops = await (0, helpers_1.getDevOpsInfo)(conn);
+        if (!devops)
+            return res.status(404).json({ error: 'Profile not found' });
+        const token = getDevOpsToken(devops);
+        if (!token)
+            return res.status(400).json({ error: 'Token not configured' });
+        if (devops.provider === 'github') {
+            const url = `https://api.github.com/repos/${devops.owner}/${devops.repo}/pulls/${iid}`;
+            const headers = {
+                'Accept': 'application/vnd.github.v3.diff',
+                'User-Agent': 'BaseFlow-App',
+                'Authorization': `token ${token}`
+            };
+            const response = await fetch(url, { headers });
+            if (!response.ok) {
+                throw new Error(`GitHub diff fetch error: ${response.statusText} (${response.status})`);
+            }
+            const diff = await response.text();
+            res.json({ diff });
+        }
+        else if (devops.provider === 'gitlab') {
+            const urlEncodedPath = encodeURIComponent(devops.fullPath);
+            const url = `https://gitlab.com/api/v4/projects/${urlEncodedPath}/merge_requests/${iid}/changes`;
+            const headers = {
+                'PRIVATE-TOKEN': token
+            };
+            const response = await fetch(url, { headers });
+            if (!response.ok) {
+                throw new Error(`GitLab diff fetch error: ${response.statusText} (${response.status})`);
+            }
+            const data = await response.json();
+            let diff = '';
+            if (data && Array.isArray(data.changes)) {
+                diff = data.changes.map((change) => {
+                    return `diff --git a/${change.old_path} b/${change.new_path}\n${change.diff}`;
+                }).join('\n');
+            }
+            res.json({ diff });
+        }
+        else {
+            res.status(400).json({ error: 'Unsupported provider' });
+        }
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// GitHub commit helper using Git database REST APIs
+async function commitToGitHub(owner, repo, token, branchName, baseBranch, commitMessage, files) {
+    const headers = {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'BaseFlow-App',
+        'Authorization': `token ${token}`,
+        'Content-Type': 'application/json'
+    };
+    // 1. Get base branch SHA
+    const refRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${baseBranch}`, { headers });
+    if (!refRes.ok) {
+        throw new Error(`Failed to get base branch ref: ${refRes.statusText} (${refRes.status})`);
+    }
+    const refData = await refRes.json();
+    const baseCommitSha = refData.object.sha;
+    // 2. Create blobs
+    const treeItems = [];
+    for (const file of files) {
+        const blobRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/blobs`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                content: file.content,
+                encoding: 'utf-8'
+            })
+        });
+        if (!blobRes.ok) {
+            throw new Error(`Failed to create blob for ${file.path}: ${blobRes.statusText} (${blobRes.status})`);
+        }
+        const blobData = await blobRes.json();
+        treeItems.push({
+            path: file.path,
+            mode: '100644',
+            type: 'blob',
+            sha: blobData.sha
+        });
+    }
+    // 3. Create tree
+    const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            base_tree: baseCommitSha,
+            tree: treeItems
+        })
+    });
+    if (!treeRes.ok) {
+        throw new Error(`Failed to create tree: ${treeRes.statusText} (${treeRes.status})`);
+    }
+    const treeData = await treeRes.json();
+    const treeSha = treeData.sha;
+    // 4. Create commit
+    const commitRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/commits`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            message: commitMessage,
+            tree: treeSha,
+            parents: [baseCommitSha]
+        })
+    });
+    if (!commitRes.ok) {
+        throw new Error(`Failed to create commit: ${commitRes.statusText} (${commitRes.status})`);
+    }
+    const commitData = await commitRes.json();
+    const commitSha = commitData.sha;
+    // 5. Create branch ref
+    const createRefRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            ref: `refs/heads/${branchName}`,
+            sha: commitSha
+        })
+    });
+    if (!createRefRes.ok) {
+        // If branch already exists, update it instead (force: true)
+        const updateRefRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${branchName}`, {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({
+                sha: commitSha,
+                force: true
+            })
+        });
+        if (!updateRefRes.ok) {
+            throw new Error(`Failed to create or update branch ref: ${createRefRes.statusText} (${createRefRes.status})`);
+        }
+    }
+    return commitSha;
+}
+// 15. Auto create Merge/Pull Request using Git APIs
+router.post('/:conn/devops/auto-create-mr', async (req, res) => {
+    const { conn } = req.params;
+    const { issueIid, branchName, mrTitle, mrDescription } = req.body;
+    try {
+        const devops = await (0, helpers_1.getDevOpsInfo)(conn);
+        if (!devops)
+            return res.status(404).json({ error: 'Profile not found' });
+        const token = getDevOpsToken(devops);
+        if (!token)
+            return res.status(400).json({ error: 'Token not configured' });
+        const repoPath = (0, helpers_1.resolveRepoPath)(devops.profile);
+        // Find all modified files content
+        const filesToCommit = [];
+        // Check if we tracked modified files
+        if (types_1.modifiedFiles.size > 0) {
+            for (const filePath of types_1.modifiedFiles) {
+                const fullPath = path.join(repoPath, filePath);
+                if (fs.existsSync(fullPath)) {
+                    const content = fs.readFileSync(fullPath, 'utf-8');
+                    filesToCommit.push({ path: filePath, content });
+                }
+            }
+        }
+        // Fallback: if no tracked modified files, look inside skills/ directory
+        if (filesToCommit.length === 0) {
+            const skillsDir = path.join(repoPath, 'skills');
+            if (fs.existsSync(skillsDir)) {
+                const files = fs.readdirSync(skillsDir);
+                for (const file of files) {
+                    if (file.endsWith('.md')) {
+                        const filePath = `skills/${file}`;
+                        const fullPath = path.join(skillsDir, file);
+                        const content = fs.readFileSync(fullPath, 'utf-8');
+                        filesToCommit.push({ path: filePath, content });
+                    }
+                }
+            }
+        }
+        if (filesToCommit.length === 0) {
+            return res.status(400).json({ error: 'No modified files or playbooks found in workspace to commit' });
+        }
+        const baseBranch = devops.profile.options?.branch || 'main';
+        if (devops.provider === 'github') {
+            // 1. Commit files and create branch using Git database API
+            await commitToGitHub(devops.owner, devops.repo, token, branchName, baseBranch, mrTitle, filesToCommit);
+            // 2. Create Pull Request
+            const url = `https://api.github.com/repos/${devops.owner}/${devops.repo}/pulls`;
+            const headers = {
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'BaseFlow-App',
+                'Authorization': `token ${token}`,
+                'Content-Type': 'application/json'
+            };
+            const prResponse = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    title: mrTitle,
+                    head: branchName,
+                    base: baseBranch,
+                    body: mrDescription
+                })
+            });
+            if (!prResponse.ok) {
+                const errorData = await prResponse.json();
+                throw new Error(`GitHub PR creation error: ${errorData.message || prResponse.statusText}`);
+            }
+            const prData = await prResponse.json();
+            types_1.modifiedFiles.clear(); // Clear tracked files after successful PR creation
+            res.json({ success: true, mrUrl: prData.html_url });
+        }
+        else if (devops.provider === 'gitlab') {
+            // 1. Prepare commit actions
+            const actions = filesToCommit.map(file => {
+                let fileExists = false;
+                try {
+                    const cachePath = (0, helpers_1.resolveCachePath)(conn);
+                    if (fs.existsSync(cachePath)) {
+                        const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+                        fileExists = cacheData.classes.some((c) => c.filePath === file.path);
+                    }
+                }
+                catch (_) { }
+                return {
+                    action: fileExists ? 'update' : 'create',
+                    file_path: file.path,
+                    content: file.content
+                };
+            });
+            const urlEncodedPath = encodeURIComponent(devops.fullPath);
+            const commitUrl = `https://gitlab.com/api/v4/projects/${urlEncodedPath}/repository/commits`;
+            const headers = {
+                'PRIVATE-TOKEN': token,
+                'Content-Type': 'application/json'
+            };
+            const commitResponse = await fetch(commitUrl, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    branch: branchName,
+                    start_branch: baseBranch,
+                    commit_message: mrTitle,
+                    actions: actions
+                })
+            });
+            if (!commitResponse.ok) {
+                const errorData = await commitResponse.json();
+                throw new Error(`GitLab commit error: ${errorData.message || commitResponse.statusText}`);
+            }
+            // 2. Create Merge Request
+            const mrUrl = `https://gitlab.com/api/v4/projects/${urlEncodedPath}/merge_requests`;
+            const mrResponse = await fetch(mrUrl, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    source_branch: branchName,
+                    target_branch: baseBranch,
+                    title: mrTitle,
+                    description: mrDescription
+                })
+            });
+            if (!mrResponse.ok) {
+                const errorData = await mrResponse.json();
+                throw new Error(`GitLab MR creation error: ${errorData.message || mrResponse.statusText}`);
+            }
+            const mrData = await mrResponse.json();
+            types_1.modifiedFiles.clear(); // Clear tracked files after successful MR creation
+            res.json({ success: true, mrUrl: mrData.web_url });
+        }
+        else {
+            res.status(400).json({ error: 'Unsupported provider' });
+        }
+    }
+    catch (error) {
+        console.error('Auto create MR error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// 16. Submit PR/MR Code Review Comment
+router.post('/:conn/devops/submit-mr-review', async (req, res) => {
+    const { conn } = req.params;
+    const { mrIid, summary, comments } = req.body;
+    if (!mrIid || !summary) {
+        return res.status(400).json({ error: 'mrIid and summary are required' });
+    }
+    try {
+        const devops = await (0, helpers_1.getDevOpsInfo)(conn);
+        if (!devops)
+            return res.status(404).json({ error: 'Profile not found' });
+        const token = getDevOpsToken(devops);
+        if (!token)
+            return res.status(400).json({ error: 'Token not configured' });
+        // Consolidate review summary and file comments into one clean markdown body
+        const commentLines = [
+            `### 🤖 AI Code Review Summary`,
+            summary,
+            ''
+        ];
+        if (Array.isArray(comments) && comments.length > 0) {
+            commentLines.push(`#### 📄 Inline File Comments:`);
+            comments.forEach(c => {
+                commentLines.push(`- **${c.filePath}**: ${c.comment}`);
+            });
+        }
+        const consolidatedBody = commentLines.join('\n');
+        if (devops.provider === 'github') {
+            // Post comment on GitHub issue/PR
+            const url = `https://api.github.com/repos/${devops.owner}/${devops.repo}/issues/${mrIid}/comments`;
+            const headers = {
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'BaseFlow-App',
+                'Authorization': `token ${token}`,
+                'Content-Type': 'application/json'
+            };
+            const response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ body: consolidatedBody })
+            });
+            if (!response.ok) {
+                throw new Error(`GitHub comment post error: ${response.statusText} (${response.status})`);
+            }
+            res.json({ success: true });
+        }
+        else if (devops.provider === 'gitlab') {
+            // Post comment on GitLab MR
+            const urlEncodedPath = encodeURIComponent(devops.fullPath);
+            const url = `https://gitlab.com/api/v4/projects/${urlEncodedPath}/merge_requests/${mrIid}/notes`;
+            const headers = {
+                'PRIVATE-TOKEN': token,
+                'Content-Type': 'application/json'
+            };
+            const response = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ body: consolidatedBody })
+            });
+            if (!response.ok) {
+                throw new Error(`GitLab note post error: ${response.statusText} (${response.status})`);
+            }
+            res.json({ success: true });
+        }
+        else {
+            res.status(400).json({ error: 'Unsupported provider' });
+        }
+    }
+    catch (error) {
+        console.error('Submit review error:', error);
         res.status(500).json({ error: error.message });
     }
 });

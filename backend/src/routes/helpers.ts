@@ -516,6 +516,18 @@ export function resolveRepoPath(profile: any): string {
   }
   // For remote URL, return temp folder path
   const repoName = uri.split('/').pop()?.replace('.git', '') || 'temp-repo';
+  
+  if (fs.existsSync(tempDir)) {
+    try {
+      const items = fs.readdirSync(tempDir);
+      const matched = items.find(item => item.toLowerCase() === repoName.toLowerCase());
+      if (matched) {
+        return path.join(tempDir, matched);
+      }
+    } catch (e) {
+      console.warn(`Failed to read tempDir for case-insensitive match:`, e);
+    }
+  }
   return path.join(tempDir, repoName);
 }
 
@@ -547,6 +559,24 @@ function getRepoLastModified(dirPath: string): number {
   return maxMtime;
 }
 
+// Resolve Cache Path
+export function resolveCachePath(profileName: string): string {
+  const cachePath = path.join(tempDir, `${profileName}_cache.json`);
+  if (!fs.existsSync(cachePath) && fs.existsSync(tempDir)) {
+    try {
+      const items = fs.readdirSync(tempDir);
+      const targetName = `${profileName}_cache.json`.toLowerCase();
+      const matched = items.find(item => item.toLowerCase() === targetName);
+      if (matched) {
+        return path.join(tempDir, matched);
+      }
+    } catch (e) {
+      console.warn(`Failed to read tempDir for case-insensitive cache lookup:`, e);
+    }
+  }
+  return cachePath;
+}
+
 // Scan repository utility
 export async function getOrScanRepo(profileName: string): Promise<{ repoPath: string; classes: ParsedClass[]; graph: any }> {
   if (repoCache.has(profileName)) {
@@ -564,7 +594,7 @@ export async function getOrScanRepo(profileName: string): Promise<{ repoPath: st
   // If remote and does not exist, download ZIP
   if (profile.options?.type !== 'local' && !fs.existsSync(targetPath)) {
     console.log(`Auto-downloading remote ZIP for ${profile.uri} to ${targetPath}...`);
-    const cachePath = path.join(tempDir, `${profileName}_cache.json`);
+    const cachePath = resolveCachePath(profileName);
     try {
       await zipCloneOrPull(profile.uri, targetPath, profile.options, cachePath);
     } catch (e: any) {
@@ -574,7 +604,7 @@ export async function getOrScanRepo(profileName: string): Promise<{ repoPath: st
   }
 
   // Check for cached scan result file
-  const cachePath = path.join(tempDir, `${profileName}_cache.json`);
+  const cachePath = resolveCachePath(profileName);
   const useCache = fs.existsSync(cachePath);
 
   if (!useCache && !fs.existsSync(targetPath)) {

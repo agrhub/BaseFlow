@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { z } from 'zod';
 import { FunctionTool } from '@google/adk';
-import { currentScanResult, setCurrentScanResult, pendingActions } from './types';
+import { currentScanResult, setCurrentScanResult, pendingActions, modifiedFiles } from './types';
 
 export const resolveIssueWithAITool = new FunctionTool({
   name: 'resolve_issue_with_ai',
@@ -308,6 +308,7 @@ export const writeWorkspaceFileTool = new FunctionTool({
         fs.mkdirSync(parentDir, { recursive: true });
       }
       fs.writeFileSync(fullPath, content, 'utf-8');
+      modifiedFiles.add(filePath);
       
       pendingActions.push({
         type: 'PLAYBOOK_CREATED',
