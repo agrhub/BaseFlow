@@ -43,6 +43,8 @@ const child_process_1 = require("child_process");
 const helpers_1 = require("./helpers");
 const GeminiService_1 = require("../services/GeminiService");
 const prompts_1 = require("../prompts/prompts");
+const ConnectionStore_1 = require("../services/ConnectionStore");
+const diff_1 = require("diff");
 const router = express_1.default.Router();
 // 1. GET Recurse Markdown files list
 router.get('/:conn/documents', async (req, res) => {
@@ -85,14 +87,14 @@ router.get('/:conn/documents/content', async (req, res) => {
     }
     try {
         const { repoPath } = await (0, helpers_1.getOrScanRepo)(conn);
-        const safePath = path.resolve(path.join(repoPath, docPath));
-        if (!safePath.startsWith(path.resolve(repoPath))) {
+        const { resolvedFilePath, activeRepoRoot } = (0, helpers_1.resolveFilePathWithFallback)(repoPath, docPath);
+        if (!resolvedFilePath.startsWith(path.resolve(activeRepoRoot))) {
             return res.status(403).json({ error: 'Access denied' });
         }
-        if (!fs.existsSync(safePath)) {
+        if (!fs.existsSync(resolvedFilePath)) {
             return res.status(404).json({ error: 'File not found' });
         }
-        const content = fs.readFileSync(safePath, 'utf-8');
+        const content = fs.readFileSync(resolvedFilePath, 'utf-8');
         res.json({ content });
     }
     catch (error) {
@@ -100,7 +102,83 @@ router.get('/:conn/documents/content', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-// 2b. GET Document file diff (git diff)
+// Helper to fetch base file content from Git APIs (GitHub / GitLab)
+async function fetchBaseFileContent(profile, relativePath) {
+    const uri = profile.uri || '';
+    const parsed = (0, helpers_1.parseGitUrl)(uri);
+    if (!parsed) {
+        throw new Error(`Invalid Git repository URL: ${uri}`);
+    }
+    const { provider, owner, repo, fullPath } = parsed;
+    const branch = profile.options?.branch || '';
+    const token = profile.options?.gitToken;
+    const username = profile.options?.gitUsername;
+    let url = '';
+    const headers = {
+        'User-Agent': 'BaseFlow-App'
+    };
+    if (provider === 'github') {
+        url = `https://api.github.com/repos/${owner}/${repo}/contents/${relativePath}`;
+        if (branch) {
+            url += `?ref=${encodeURIComponent(branch)}`;
+        }
+        headers['Accept'] = 'application/vnd.github.v3.raw';
+        if (token) {
+            headers['Authorization'] = `token ${token}`;
+        }
+    }
+    else if (provider === 'gitlab') {
+        let resolvedBranch = branch;
+        if (!resolvedBranch) {
+            try {
+                const projUrl = `https://gitlab.com/api/v4/projects/${encodeURIComponent(fullPath)}`;
+                const headers = {};
+                if (token) {
+                    if (username === 'oauth2') {
+                        headers['Authorization'] = `Bearer ${token}`;
+                    }
+                    else {
+                        headers['PRIVATE-TOKEN'] = token;
+                    }
+                }
+                const projRes = await fetch(projUrl, { headers });
+                if (projRes.ok) {
+                    const projData = await projRes.json();
+                    resolvedBranch = projData.default_branch || 'main';
+                }
+                else {
+                    resolvedBranch = 'main';
+                }
+            }
+            catch (e) {
+                resolvedBranch = 'main';
+            }
+        }
+        url = `https://gitlab.com/api/v4/projects/${encodeURIComponent(fullPath)}/repository/files/${encodeURIComponent(relativePath)}/raw?ref=${encodeURIComponent(resolvedBranch)}`;
+        if (token) {
+            if (username === 'oauth2') {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            else {
+                headers['PRIVATE-TOKEN'] = token;
+            }
+        }
+    }
+    else {
+        throw new Error(`Unsupported Git provider: ${provider}`);
+    }
+    console.log(`[VCS API] Fetching base file content from: ${url}`);
+    const response = await fetch(url, { headers });
+    if (response.status === 404) {
+        // File not found on remote (it's a new file)
+        return '';
+    }
+    if (!response.ok) {
+        throw new Error(`Git API error: ${response.statusText} (${response.status})`);
+    }
+    return response.text();
+}
+// 2b. GET Document file diff (git diff or VCS API diff)
 router.get('/:conn/documents/diff', async (req, res) => {
     const { conn } = req.params;
     const docPath = req.query.path;
@@ -109,32 +187,52 @@ router.get('/:conn/documents/diff', async (req, res) => {
     }
     try {
         const { repoPath } = await (0, helpers_1.getOrScanRepo)(conn);
-        const safePath = path.resolve(path.join(repoPath, docPath));
-        if (!safePath.startsWith(path.resolve(repoPath))) {
+        const { resolvedFilePath, activeRepoRoot } = (0, helpers_1.resolveFilePathWithFallback)(repoPath, docPath);
+        if (!resolvedFilePath.startsWith(path.resolve(activeRepoRoot))) {
             return res.status(403).json({ error: 'Access denied' });
         }
-        if (!fs.existsSync(safePath)) {
+        if (!fs.existsSync(resolvedFilePath)) {
             return res.status(404).json({ error: 'File not found' });
         }
-        const relativePath = path.relative(repoPath, safePath).replace(/\\/g, '/');
-        (0, child_process_1.exec)(`git ls-files --error-unmatch "${relativePath}"`, { cwd: repoPath }, (lsError) => {
-            if (lsError) {
-                // File is untracked, compare with empty file
-                const nullDev = process.platform === 'win32' ? 'NUL' : '/dev/null';
-                (0, child_process_1.exec)(`git diff --no-index ${nullDev} "${relativePath}"`, { cwd: repoPath }, (diffError, diffStdout) => {
-                    res.json({ diff: diffStdout || '' });
-                });
+        const relativePath = path.relative(repoPath, resolvedFilePath).replace(/\\/g, '/');
+        const hasGit = fs.existsSync(path.join(repoPath, '.git'));
+        if (hasGit) {
+            (0, child_process_1.exec)(`git ls-files --error-unmatch "${relativePath}"`, { cwd: repoPath }, (lsError) => {
+                if (lsError) {
+                    // File is untracked, compare with empty file
+                    const nullDev = '/dev/null';
+                    (0, child_process_1.exec)(`git diff --no-index ${nullDev} "${relativePath}"`, { cwd: repoPath }, (diffError, diffStdout) => {
+                        res.json({ diff: diffStdout || '' });
+                    });
+                }
+                else {
+                    // File is tracked, run git diff HEAD
+                    (0, child_process_1.exec)(`git diff HEAD -- "${relativePath}"`, { cwd: repoPath }, (diffError, diffStdout, diffStderr) => {
+                        if (diffError && diffError.code && diffError.code > 1) {
+                            return res.status(500).json({ error: diffStderr || diffError.message });
+                        }
+                        res.json({ diff: diffStdout || '' });
+                    });
+                }
+            });
+        }
+        else {
+            // No local git repo. Fetch base content from Git API and diff in JS
+            const profile = await ConnectionStore_1.connectionStore.getConnection(conn);
+            if (!profile) {
+                return res.status(404).json({ error: 'Connection profile not found' });
             }
-            else {
-                // File is tracked, run git diff HEAD
-                (0, child_process_1.exec)(`git diff HEAD -- "${relativePath}"`, { cwd: repoPath }, (diffError, diffStdout, diffStderr) => {
-                    if (diffError && diffError.code && diffError.code > 1) {
-                        return res.status(500).json({ error: diffStderr || diffError.message });
-                    }
-                    res.json({ diff: diffStdout || '' });
-                });
+            let baseContent = '';
+            try {
+                baseContent = await fetchBaseFileContent(profile, relativePath);
             }
-        });
+            catch (apiErr) {
+                console.warn(`[VCS API] Failed to fetch base file content for ${relativePath}, treating as untracked:`, apiErr.message);
+            }
+            const localContent = fs.readFileSync(resolvedFilePath, 'utf-8');
+            const diff = (0, diff_1.createPatch)(relativePath, baseContent, localContent);
+            res.json({ diff });
+        }
     }
     catch (error) {
         console.error('Document diff error:', error);

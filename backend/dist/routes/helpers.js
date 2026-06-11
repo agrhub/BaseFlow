@@ -55,6 +55,8 @@ exports.getDevOpsInfo = getDevOpsInfo;
 exports.generateArchitectureDiagrams = generateArchitectureDiagrams;
 exports.getAuthenticatedGitUrl = getAuthenticatedGitUrl;
 exports.cloneRemoteRepo = cloneRemoteRepo;
+exports.resolveFilePathWithFallback = resolveFilePathWithFallback;
+exports.updateCacheWithParsedFile = updateCacheWithParsedFile;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const https = __importStar(require("https"));
@@ -1135,4 +1137,78 @@ async function cloneRemoteRepo(uri, options, forceClone = false) {
         }
     }
     return targetPath;
+}
+// Helper to resolve filePath, fallback to /tmp local sync path if GCS file does not exist during sync,
+// and resolves extension-less file path requests (for new or unindexed files without explicit extensions).
+function resolveFilePathWithFallback(repoPath, filePath) {
+    let resolvedFilePath = path.resolve(repoPath, filePath);
+    let activeRepoRoot = repoPath;
+    const findPathWithExt = (basePath) => {
+        if (fs.existsSync(basePath) && fs.statSync(basePath).isFile())
+            return basePath;
+        const exts = ['.java', '.ts', '.tsx', '.js', '.jsx', '.py', '.cs', '.go', '.rs', '.kt', '.php', '.html', '.css', '.json', '.md'];
+        for (const ext of exts) {
+            const testPath = basePath + ext;
+            if (fs.existsSync(testPath))
+                return testPath;
+        }
+        return null;
+    };
+    const matchedPath = findPathWithExt(resolvedFilePath);
+    if (matchedPath) {
+        resolvedFilePath = matchedPath;
+    }
+    else {
+        // If not found in repoPath, try localSyncPath
+        const localSyncPath = exports.activeSyncPaths.get(repoPath);
+        if (localSyncPath) {
+            const localFilePath = path.resolve(localSyncPath, filePath);
+            const relativeLocal = path.relative(localSyncPath, localFilePath);
+            if (!relativeLocal.startsWith('..') && !path.isAbsolute(relativeLocal)) {
+                const matchedLocal = findPathWithExt(localFilePath);
+                if (matchedLocal) {
+                    console.log(`[File Fallback] Reading ${filePath} from local sync path: ${matchedLocal}`);
+                    resolvedFilePath = matchedLocal;
+                    activeRepoRoot = localSyncPath;
+                }
+            }
+        }
+    }
+    return { resolvedFilePath, activeRepoRoot };
+}
+// Parse single file and update connection cache and layout graph in-memory and on-disk
+async function updateCacheWithParsedFile(profileName, relativeFilePath, content) {
+    const cacheData = await getOrScanRepo(profileName);
+    const repoPath = cacheData.repoPath;
+    const fullPath = path.resolve(repoPath, relativeFilePath);
+    // Parse the file to get the new classes list
+    const newClasses = (0, parser_1.parseSingleFile)(fullPath, relativeFilePath, content);
+    // Filter out any existing classes for this file path
+    const filteredClasses = cacheData.classes.filter(c => c.filePath !== relativeFilePath);
+    // Append new classes
+    const allClasses = [...filteredClasses, ...newClasses];
+    // Regenerate the graph layout
+    const { nodes, edges } = (0, parser_1.generateGraphLayout)(allClasses);
+    // Update in-memory cache
+    const updatedCache = {
+        repoPath,
+        classes: allClasses,
+        graph: {
+            classes: allClasses,
+            nodes,
+            edges
+        }
+    };
+    repoCache.set(profileName, updatedCache);
+    // Update on-disk cache file
+    const cachePath = resolveCachePath(profileName);
+    try {
+        fs.writeFileSync(cachePath, JSON.stringify(updatedCache.graph), 'utf-8');
+        (0, tools_1.setCurrentScanResult)(repoPath, allClasses);
+        console.log(`[Cache Update] Successfully updated cache and graph for file: ${relativeFilePath}`);
+    }
+    catch (err) {
+        console.warn(`[Cache Update] Failed to write updated cache file for ${profileName}:`, err);
+    }
+    return newClasses;
 }

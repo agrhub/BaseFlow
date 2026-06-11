@@ -34,7 +34,9 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getAllFiles = getAllFiles;
+exports.generateGraphLayout = generateGraphLayout;
 exports.parseRepository = parseRepository;
+exports.parseSingleFile = parseSingleFile;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const ts = __importStar(require("typescript"));
@@ -204,9 +206,44 @@ function parseTypeScriptFile(filePath, relativePath, content, classes) {
         console.error(`Error parsing TypeScript file ${filePath}:`, error);
     }
 }
+const RESERVED_KEYWORDS = new Set([
+    // Control flow & keywords
+    'for', 'if', 'else', 'elif', 'while', 'do', 'switch', 'case', 'break', 'continue', 'return', 'yield',
+    'try', 'catch', 'finally', 'throw', 'throws', 'default', 'goto', 'fn', 'func', 'function',
+    // Declarations & OOP
+    'class', 'interface', 'enum', 'struct', 'trait', 'impl', 'type', 'var', 'let', 'const',
+    'public', 'private', 'protected', 'internal', 'abstract', 'static', 'final', 'volatile',
+    'transient', 'synchronized', 'native', 'strictfp', 'virtual', 'override', 'sealed', 'partial',
+    'pub', 'mut', 'ref', 'self', 'Self', 'using', 'namespace', 'package', 'import', 'from', 'as',
+    'extends', 'implements', 'new', 'delete', 'this', 'super', 'operator', 'friend', 'template',
+    'inline', 'extern', 'union', 'select', 'defer', 'go', 'map', 'chan', 'range', 'fallthrough',
+    'and', 'or', 'not', 'xor', 'is', 'in', 'lambda', 'del', 'pass', 'with', 'assert', 'raise',
+    'global', 'nonlocal', 'crate', 'dyn', 'loop', 'match', 'mod', 'move', 'use', 'where',
+    // Types & Builtins
+    'void', 'int', 'float', 'double', 'char', 'bool', 'boolean', 'byte', 'short', 'long',
+    'string', 'any', 'none', 'null', 'true', 'false', 'object', 'undefined', 'nil'
+]);
+function stripComments(content, ext) {
+    if (ext === '.py') {
+        let clean = content.replace(/#.*$/gm, '');
+        clean = clean.replace(/"""[\s\S]*?"""/g, (match) => match.replace(/[^\n]/g, ''));
+        clean = clean.replace(/'''[\s\S]*?'''/g, (match) => match.replace(/[^\n]/g, ''));
+        return clean;
+    }
+    if (['.java', '.cs', '.go', '.rs', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.c', '.php'].includes(ext)) {
+        let clean = content.replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\n]/g, ''));
+        clean = clean.replace(/\/\/.*$/gm, '');
+        if (ext === '.php') {
+            clean = clean.replace(/#.*$/gm, '');
+        }
+        return clean;
+    }
+    return content;
+}
 function parseRegexFile(filePath, relativePath, content, ext, classes) {
     try {
         const initialLen = classes.length;
+        content = stripComments(content, ext);
         const lines = content.split('\n');
         let currentClass = null;
         const dependencies = new Set();
@@ -214,12 +251,14 @@ function parseRegexFile(filePath, relativePath, content, ext, classes) {
             for (const line of lines) {
                 const classMatch = line.match(/^\s*class\s+(\w+)(?:\s*\(([^)]+)\))?\s*:/);
                 if (classMatch) {
+                    const className = classMatch[1];
+                    if (RESERVED_KEYWORDS.has(className))
+                        continue;
                     if (currentClass) {
                         currentClass.dependencies = Array.from(dependencies).filter(d => d !== currentClass.name);
                         classes.push(currentClass);
                         dependencies.clear();
                     }
-                    const className = classMatch[1];
                     const parents = classMatch[2] ? classMatch[2].split(',').map(s => s.trim()) : [];
                     const baseClass = parents[0];
                     parents.forEach(p => dependencies.add(p));
@@ -270,8 +309,8 @@ function parseRegexFile(filePath, relativePath, content, ext, classes) {
             let classBraceLevel = 0;
             let inClass = false;
             for (const line of lines) {
-                // Strip comments
-                const cleanLine = line.replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '').trim();
+                // Strip single line comments (multiline comments already stripped by stripComments)
+                const cleanLine = line.replace(/\/\/.*$/, '').trim();
                 if (!cleanLine)
                     continue;
                 // Track imports and usings globally
@@ -294,7 +333,7 @@ function parseRegexFile(filePath, relativePath, content, ext, classes) {
                 const classMatch = cleanLine.match(/(?:public|private|protected|internal|abstract|static|\s)*(?:class|interface|enum)\s+(\w+)(?:\s*:\s*([\w\s,]+))?(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w\s,]+))?/);
                 if (classMatch && !cleanLine.includes(';')) {
                     const className = classMatch[1];
-                    if (className === 'Program' || className === 'Main')
+                    if (className === 'Program' || className === 'Main' || RESERVED_KEYWORDS.has(className))
                         continue;
                     if (currentClass) {
                         currentClass.dependencies = Array.from(dependencies).filter(d => d !== currentClass.name);
@@ -418,6 +457,8 @@ function parseRegexFile(filePath, relativePath, content, ext, classes) {
             const fileClasses = {};
             while ((match = structRegex.exec(content)) !== null) {
                 const name = match[1];
+                if (RESERVED_KEYWORDS.has(name))
+                    continue;
                 fileClasses[name] = {
                     name,
                     filePath: relativePath,
@@ -521,6 +562,8 @@ function parseRegexFile(filePath, relativePath, content, ext, classes) {
             const fileClasses = {};
             while ((match = typeRegex.exec(content)) !== null) {
                 const name = match[1];
+                if (RESERVED_KEYWORDS.has(name))
+                    continue;
                 fileClasses[name] = {
                     name,
                     filePath: relativePath,
@@ -596,7 +639,7 @@ function parseRegexFile(filePath, relativePath, content, ext, classes) {
             let match;
             while ((match = classRegex.exec(content)) !== null) {
                 const name = match[1];
-                if (name === 'std' || name === 'string' || name === 'vector')
+                if (name === 'std' || name === 'string' || name === 'vector' || RESERVED_KEYWORDS.has(name))
                     continue;
                 const baseClass = match[2];
                 const fileClass = {
@@ -674,6 +717,8 @@ function parseRegexFile(filePath, relativePath, content, ext, classes) {
             let match;
             while ((match = classRegex.exec(content)) !== null) {
                 const name = match[1];
+                if (RESERVED_KEYWORDS.has(name))
+                    continue;
                 const baseClass = match[2];
                 const implementsList = match[3] ? match[3].split(',').map(s => s.trim()) : [];
                 const fileClass = {
@@ -895,4 +940,18 @@ function parseRepository(repoPath) {
         nodes,
         edges
     };
+}
+function parseSingleFile(filePath, relativePath, content, classes = []) {
+    const ext = path.extname(filePath).toLowerCase();
+    if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
+        parseTypeScriptFile(filePath, relativePath, content, classes);
+    }
+    else if (ext === '.vue') {
+        const scriptContent = getVueScriptContent(content);
+        parseTypeScriptFile(filePath, relativePath, scriptContent || content, classes);
+    }
+    else {
+        parseRegexFile(filePath, relativePath, content, ext, classes);
+    }
+    return classes;
 }

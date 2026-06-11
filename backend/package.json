@@ -11,8 +11,10 @@
   "dependencies": {
     "@google/adk": "^1.0.0",
     "@google/gemini-cli": "^0.46.0",
+    "@types/diff": "^7.0.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "diff": "^9.0.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-session": "^1.19.0",
