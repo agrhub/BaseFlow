@@ -129,24 +129,6 @@ function getMimeType(filePath) {
     };
     return mimeMap[ext] || 'application/octet-stream';
 }
-// Helper to resolve filePath, fallback to /tmp local sync path if GCS file does not exist during sync
-function resolveFilePathWithFallback(repoPath, filePath) {
-    let resolvedFilePath = path.resolve(repoPath, filePath);
-    let activeRepoRoot = repoPath;
-    if (!fs.existsSync(resolvedFilePath)) {
-        const localSyncPath = helpers_1.activeSyncPaths.get(repoPath);
-        if (localSyncPath) {
-            const localFilePath = path.resolve(localSyncPath, filePath);
-            const relativeLocal = path.relative(localSyncPath, localFilePath);
-            if (!relativeLocal.startsWith('..') && !path.isAbsolute(relativeLocal) && fs.existsSync(localFilePath)) {
-                console.log(`[File Fallback] Reading ${filePath} from local sync path: ${localFilePath}`);
-                resolvedFilePath = localFilePath;
-                activeRepoRoot = localSyncPath;
-            }
-        }
-    }
-    return { resolvedFilePath, activeRepoRoot };
-}
 // 1b. Read source file content on demand (replaces rawCode in cache)
 router.get('/:conn/file-content', async (req, res) => {
     const { conn } = req.params;
@@ -156,7 +138,7 @@ router.get('/:conn/file-content', async (req, res) => {
     }
     try {
         const { repoPath } = await (0, helpers_1.getOrScanRepo)(conn);
-        const { resolvedFilePath, activeRepoRoot } = resolveFilePathWithFallback(repoPath, filePath);
+        const { resolvedFilePath, activeRepoRoot } = (0, helpers_1.resolveFilePathWithFallback)(repoPath, filePath);
         // Security: prevent path traversal outside repo
         const relative = path.relative(activeRepoRoot, resolvedFilePath);
         if (relative.startsWith('..') || path.isAbsolute(relative)) {
@@ -197,7 +179,32 @@ router.get('/:conn/file-content', async (req, res) => {
                 content = fs.readFileSync(resolvedFilePath, 'utf-8');
             }
         }
-        res.json({ content, filePath, truncated, size: stat.size, isBinary, mimeType });
+        let parsedClass = null;
+        let parsedClasses = [];
+        if (!isBinary && content) {
+            const ext = path.extname(resolvedFilePath).toLowerCase();
+            const supportExts = ['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.cs', '.vue', '.rs', '.go', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.c', '.php'];
+            if (supportExts.includes(ext)) {
+                const relativeFilePath = path.relative(activeRepoRoot, resolvedFilePath).replace(/\\/g, '/');
+                try {
+                    const newClasses = await (0, helpers_1.updateCacheWithParsedFile)(conn, relativeFilePath, content);
+                    if (newClasses && newClasses.length > 0) {
+                        parsedClasses = newClasses;
+                        const targetClassName = req.query.className;
+                        if (targetClassName) {
+                            parsedClass = newClasses.find(c => c.name.toLowerCase() === targetClassName.toLowerCase()) || newClasses[0];
+                        }
+                        else {
+                            parsedClass = newClasses[0];
+                        }
+                    }
+                }
+                catch (parseErr) {
+                    console.error(`Failed to parse and update cache for file ${relativeFilePath}:`, parseErr);
+                }
+            }
+        }
+        res.json({ content, filePath, truncated, size: stat.size, isBinary, mimeType, parsedClass, parsedClasses });
     }
     catch (error) {
         res.status(500).json({ error: error.message });
@@ -212,7 +219,7 @@ router.get('/:conn/file-raw', async (req, res) => {
     }
     try {
         const { repoPath } = await (0, helpers_1.getOrScanRepo)(conn);
-        const { resolvedFilePath, activeRepoRoot } = resolveFilePathWithFallback(repoPath, filePath);
+        const { resolvedFilePath, activeRepoRoot } = (0, helpers_1.resolveFilePathWithFallback)(repoPath, filePath);
         // Security: prevent path traversal outside repo
         const relative = path.relative(activeRepoRoot, resolvedFilePath);
         if (relative.startsWith('..') || path.isAbsolute(relative)) {
@@ -668,30 +675,30 @@ router.post('/:conn/open-file', async (req, res) => {
     }
     try {
         const { repoPath } = await (0, helpers_1.getOrScanRepo)(conn);
+        const { resolvedFilePath, activeRepoRoot } = (0, helpers_1.resolveFilePathWithFallback)(repoPath, filePath);
         // Security: prevent path traversal outside repo
-        const fullPath = path.resolve(repoPath, filePath);
-        const relative = path.relative(repoPath, fullPath);
+        const relative = path.relative(activeRepoRoot, resolvedFilePath);
         if (relative.startsWith('..') || path.isAbsolute(relative)) {
             return res.status(403).json({ error: 'Access denied: path traversal not allowed' });
         }
-        if (!fs.existsSync(fullPath)) {
+        if (!fs.existsSync(resolvedFilePath)) {
             return res.status(404).json({ error: `File not found: ${filePath}` });
         }
         const platform = process.platform;
         let cmd = '';
         if (platform === 'win32') {
-            cmd = `start "" "${fullPath}"`;
+            cmd = `start "" "${resolvedFilePath}"`;
         }
         else if (platform === 'darwin') {
-            cmd = `open "${fullPath}"`;
+            cmd = `open "${resolvedFilePath}"`;
         }
         else {
-            cmd = `xdg-open "${fullPath}"`;
+            cmd = `xdg-open "${resolvedFilePath}"`;
         }
         const { exec } = require('child_process');
         exec(cmd, (error) => {
             if (error) {
-                console.error(`Error opening file ${fullPath}:`, error);
+                console.error(`Error opening file ${resolvedFilePath}:`, error);
                 return res.status(500).json({ error: `Could not open file: ${error.message}` });
             }
             res.json({ success: true });

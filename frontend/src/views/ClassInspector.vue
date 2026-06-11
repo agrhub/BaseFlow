@@ -113,11 +113,31 @@ const fetchSourceCode = async (filePath) => {
   activeLine.value = null;
   try {
     const res = await axios.get(`/api/${store.activeConnection}/file-content`, {
-      params: { path: filePath }
+      params: { path: filePath, className: classData.value?.name }
     });
     isSourceBinary.value = !!res.data.isBinary;
     sourceMimeType.value = res.data.mimeType || '';
     sourceCode.value = res.data.content || '';
+
+    if (res.data.parsedClass && classData.value) {
+      let targetClass = res.data.parsedClass;
+      if (res.data.parsedClasses && res.data.parsedClasses.length > 0) {
+        const found = res.data.parsedClasses.find(c => c.name.toLowerCase() === store.activeItem.toLowerCase());
+        if (found) {
+          targetClass = found;
+        }
+      }
+
+      classData.value.name = targetClass.name || classData.value.name;
+      classData.value.baseClass = targetClass.baseClass || '';
+      classData.value.implementsList = targetClass.implementsList || [];
+      classData.value.properties = targetClass.properties || [];
+      classData.value.methods = targetClass.methods || [];
+      classData.value.dependencies = targetClass.dependencies || [];
+      if (targetClass.isModule !== undefined) {
+        classData.value.isModule = targetClass.isModule;
+      }
+    }
   } catch (e) {
     sourceCode.value = `// Could not load source file: ${filePath}`;
   } finally {
@@ -150,7 +170,19 @@ const fetchClassDetails = async () => {
       };
       await fetchSourceCode(matchedNode.data.filePath);
     } else {
-      ElMessage.error(store.t('No details found.'));
+      // Fallback: If not in class graph index (e.g. it's a new or non-class file), construct direct file metadata
+      const fallbackFilePath = store.activeFolder === 'root' ? store.activeItem : `${store.activeFolder}/${store.activeItem}`;
+      classData.value = {
+        name: store.activeItem,
+        filePath: fallbackFilePath,
+        baseClass: '',
+        implementsList: [],
+        properties: [],
+        methods: [],
+        isModule: true, // Show code full width
+        dependencies: []
+      };
+      await fetchSourceCode(fallbackFilePath);
     }
   } catch (e) {
     console.error('Failed to load details:', e);

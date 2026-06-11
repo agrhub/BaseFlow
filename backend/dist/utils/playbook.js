@@ -48,14 +48,12 @@ const fs = __importStar(require("fs"));
 function runPlaybookCli(options) {
     const { repoPath, playbookPath, logLabel, onData } = options;
     const useVertex = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
-    const hasServiceAccount = !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    const hasServiceAccount = !!process.env.GOOGLE_APPLICATION_CREDENTIALS || !!process.env.CLOUD_RUN;
     // Build subprocess env — start from current process env
     const env = { ...process.env };
     if (useVertex) {
-        const resolvedLocation = process.env.GOOGLE_CLOUD_LOCATION === 'global'
-            ? 'us-central1'
-            : (process.env.GOOGLE_CLOUD_LOCATION || 'us-central1');
-        env['GOOGLE_GENAI_USE_VERTEXAI'] = '1';
+        const resolvedLocation = process.env.GOOGLE_CLOUD_LOCATION || 'global';
+        env['GOOGLE_GENAI_USE_VERTEXAI'] = 'true';
         env['GOOGLE_CLOUD_LOCATION'] = resolvedLocation;
         if (process.env.GOOGLE_CLOUD_PROJECT) {
             env['GOOGLE_CLOUD_PROJECT'] = process.env.GOOGLE_CLOUD_PROJECT;
@@ -65,7 +63,7 @@ function runPlaybookCli(options) {
             // "Both GOOGLE_API_KEY and GEMINI_API_KEY are set" warning → CLI picks wrong quota
             delete env['GOOGLE_API_KEY'];
             delete env['GEMINI_API_KEY'];
-            onData(`[${logLabel}] Using Vertex AI with Service Account (${process.env.GOOGLE_APPLICATION_CREDENTIALS}), location: ${resolvedLocation}\n`);
+            onData(`[${logLabel}] Using Vertex AI with Service Account (${process.env.GOOGLE_APPLICATION_CREDENTIALS || 'Implicit Cloud Run Service Account'}), location: ${resolvedLocation}\n`);
         }
         else {
             // API Key + Vertex AI backend: keep GOOGLE_API_KEY for auth, but remove GEMINI_API_KEY
@@ -74,8 +72,8 @@ function runPlaybookCli(options) {
             if (!apiKey) {
                 throw new Error('Vertex AI requires either GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_API_KEY.');
             }
-            env['GOOGLE_API_KEY'] = apiKey;
-            delete env['GEMINI_API_KEY']; // prevent dual-key conflict
+            env['GEMINI_API_KEY'] = apiKey;
+            delete env['GOOGLE_API_KEY'];
             onData(`[${logLabel}] Using Vertex AI with API Key, location: ${resolvedLocation}\n`);
         }
     }
@@ -84,9 +82,9 @@ function runPlaybookCli(options) {
         if (!apiKey) {
             throw new Error('Google/Gemini API Key is not configured in backend environment.');
         }
-        env['GOOGLE_API_KEY'] = apiKey;
-        env['GOOGLE_GENAI_USE_VERTEXAI'] = '0';
-        delete env['GEMINI_API_KEY']; // avoid dual-key confusion
+        env['GEMINI_API_KEY'] = apiKey;
+        delete env['GOOGLE_API_KEY'];
+        env['GOOGLE_GENAI_USE_VERTEXAI'] = 'false';
         onData(`[${logLabel}] Using Google AI Studio (API Key)\n`);
     }
     env['GEMINI_CLI_TRUST_WORKSPACE'] = 'true';

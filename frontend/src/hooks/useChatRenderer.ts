@@ -81,9 +81,17 @@ export function useChatRenderer() {
           router.push(`/${store.activeConnection}/explorer/${encodedDb}/${fileMatch.filename}`);
           ElMessage.success(store.t('Opening file: {file}').replace('{file}', fileMatch.filename));
         } else {
-          const filename = filePath.split('/').pop() || '';
+          // Parse folder and filename from path directly
+          const normalizedPath = filePath.replace(/\\/g, '/');
+          const lastSlash = normalizedPath.lastIndexOf('/');
+          const folder = lastSlash !== -1 ? normalizedPath.substring(0, lastSlash) : 'root';
+          const filename = lastSlash !== -1 ? normalizedPath.substring(lastSlash + 1) : normalizedPath;
+          
+          store.setFolder(folder);
           store.setItem(filename);
-          router.push(`/${store.activeConnection}/explorer/root/${filename}`);
+          const encodedDb = folder && folder !== 'root' ? folder.replace(/\//g, '_') : 'root';
+          router.push(`/${store.activeConnection}/explorer/${encodedDb}/${filename}`);
+          ElMessage.success(store.t('Opening file: {file}').replace('{file}', filename));
         }
         return;
       }

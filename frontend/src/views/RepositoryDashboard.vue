@@ -12,11 +12,11 @@
 
       <!-- Actions -->
       <div class="dashboard-actions">
-        <el-button-group>
+        <!-- <el-button-group> -->
           <el-button
             v-if="isRemote"
             type="danger"
-            :loading="pulling"
+            :loading="pulling || syncing"
             @click="pullRepository"
             text bg round 
             :icon="Download"
@@ -26,14 +26,14 @@
 
           <el-button
             type="primary"
-            :loading="syncing"
+            :loading="pulling || syncing"
             @click="syncCodebase"
             text bg round 
             :icon="Refresh"
           >
             {{ store.t('Re-Index') }}
           </el-button>
-        </el-button-group>
+        <!-- </el-button-group> -->
       </div>
     </div>
 
