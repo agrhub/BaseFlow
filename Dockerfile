@@ -4,7 +4,7 @@
 FROM node:20-slim AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY frontend/ ./
 RUN npm run build
 
@@ -14,7 +14,7 @@ RUN npm run build
 FROM node:20-slim AS backend-builder
 WORKDIR /app/backend
 COPY backend/package*.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY backend/ ./
 RUN npm run build
 
@@ -27,7 +27,7 @@ WORKDIR /app
 # Copy backend dependencies and built output
 COPY --from=backend-builder /app/backend/package*.json ./backend/
 WORKDIR /app/backend
-RUN npm install --omit=dev
+RUN npm install --omit=dev --legacy-peer-deps
 
 COPY --from=backend-builder /app/backend/dist ./dist
 
