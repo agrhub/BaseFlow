@@ -14,6 +14,7 @@ SET APP_PASSWORD=admin
 SET APP_ENCRYPTION_KEY=your_encryption_key_32_characters_here!
 SET APP_AGENT_MODEL=gemini-3.1-flash-lite
 SET GOOGLE_API_KEY=your_google_cloud_agent_api_key
+SET GEMINI_CLI_MODEL=gemini-3.1-flash
 
 echo Enabling required Google Cloud APIs...
 call gcloud services enable cloudscheduler.googleapis.com run.googleapis.com iam.googleapis.com storage.googleapis.com artifactregistry.googleapis.com --project=%PROJECT_ID% --quiet
@@ -43,6 +44,6 @@ call gcloud run deploy %IMAGE_NAME% ^
   --memory=2Gi ^
   --add-volume=name=data-vol,type=cloud-storage,bucket=%BUCKET_NAME% ^
   --add-volume-mount=volume=data-vol,mount-path=/mnt/storage ^
-  --set-env-vars="HOST=0.0.0.0,NODE_ENV=production,CLOUD_RUN=1,DATA_DIR=/mnt/storage/data,TEMP_DIR=/mnt/storage/temp,PASSWORD=%APP_PASSWORD%,ENCRYPTION_KEY=%APP_ENCRYPTION_KEY%,AGENT_MODEL=%APP_AGENT_MODEL%,GOOGLE_CLOUD_PROJECT=%PROJECT_ID%,GOOGLE_CLOUD_LOCATION=global,GOOGLE_GENAI_USE_VERTEXAI=1,GOOGLE_API_KEY=%GOOGLE_API_KEY%"
+  --set-env-vars="HOST=0.0.0.0,NODE_ENV=production,CLOUD_RUN=1,DATA_DIR=/mnt/storage/data,TEMP_DIR=/mnt/storage/temp,PASSWORD=%APP_PASSWORD%,ENCRYPTION_KEY=%APP_ENCRYPTION_KEY%,AGENT_MODEL=%APP_AGENT_MODEL%,GOOGLE_CLOUD_PROJECT=%PROJECT_ID%,GOOGLE_CLOUD_LOCATION=global,GOOGLE_GENAI_USE_VERTEXAI=1,GOOGLE_API_KEY=%GOOGLE_API_KEY%,GEMINI_CLI_MODEL=%GEMINI_CLI_MODEL%"
 
 echo Deployment complete!
