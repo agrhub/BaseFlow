@@ -1,6 +1,7 @@
 import express from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
+import { exec } from 'child_process';
 import { getOrScanRepo } from './helpers';
 import { parseRepository } from '../utils/parser';
 import { geminiService } from '../services/GeminiService';
@@ -60,6 +61,48 @@ router.get('/:conn/documents/content', async (req, res) => {
     res.json({ content });
   } catch (error: any) {
     console.error('Document read error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 2b. GET Document file diff (git diff)
+router.get('/:conn/documents/diff', async (req, res) => {
+  const { conn } = req.params;
+  const docPath = req.query.path as string;
+  if (!docPath) {
+    return res.status(400).json({ error: 'path parameter is required' });
+  }
+  try {
+    const { repoPath } = await getOrScanRepo(conn);
+    const safePath = path.resolve(path.join(repoPath, docPath));
+    if (!safePath.startsWith(path.resolve(repoPath))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    if (!fs.existsSync(safePath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
+    const relativePath = path.relative(repoPath, safePath).replace(/\\/g, '/');
+
+    exec(`git ls-files --error-unmatch "${relativePath}"`, { cwd: repoPath }, (lsError) => {
+      if (lsError) {
+        // File is untracked, compare with empty file
+        const nullDev = process.platform === 'win32' ? 'NUL' : '/dev/null';
+        exec(`git diff --no-index ${nullDev} "${relativePath}"`, { cwd: repoPath }, (diffError, diffStdout) => {
+          res.json({ diff: diffStdout || '' });
+        });
+      } else {
+        // File is tracked, run git diff HEAD
+        exec(`git diff HEAD -- "${relativePath}"`, { cwd: repoPath }, (diffError, diffStdout, diffStderr) => {
+          if (diffError && diffError.code && diffError.code > 1) {
+            return res.status(500).json({ error: diffStderr || diffError.message });
+          }
+          res.json({ diff: diffStdout || '' });
+        });
+      }
+    });
+  } catch (error: any) {
+    console.error('Document diff error:', error);
     res.status(500).json({ error: error.message });
   }
 });

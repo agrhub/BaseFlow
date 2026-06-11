@@ -31,7 +31,7 @@
             text bg round 
             :icon="Refresh"
           >
-            {{ store.t('Refresh') }}
+            {{ store.t('Re-Index') }}
           </el-button>
         </el-button-group>
       </div>
@@ -86,7 +86,11 @@
             <el-icon><Clock /></el-icon> {{ store.t('History') }}
           </span>
         </template>
-        <HistoryTab :commits="stats?.commits || []" />
+        <HistoryTab
+          :commits="stats?.commits || []"
+          :loading="loadingHistory"
+          @refresh="refreshHistory"
+        />
       </el-tab-pane>
 
       <!-- 5. DEVOPS TAB -->
@@ -136,6 +140,7 @@
           @verify-mcp="verifyCodebaseWithMCP"
           @publish-to-catalog="publishSkillToCatalog"
           @ask-agent="handleAskAgent"
+          @refresh-documents="refreshDocuments"
         />
       </el-tab-pane>
     </el-tabs>
@@ -521,6 +526,34 @@ const loadingDocContent = ref(false);
 
 const docAnalysis = ref<any>(null);
 const loadingDocAnalysis = ref(false);
+
+const loadingHistory = ref(false);
+const refreshHistory = async () => {
+  if (!store.activeConnection) return;
+  loadingHistory.value = true;
+  try {
+    const res = await axios.get(`/api/${store.activeConnection}/stats`);
+    if (stats.value) {
+      stats.value.commits = res.data.commits || [];
+    } else {
+      stats.value = res.data;
+    }
+    ElMessage.success(store.t('Commit history refreshed successfully!'));
+  } catch (e: any) {
+    console.error('Failed to refresh history:', e);
+    ElMessage.error(store.t('Failed to refresh commit history.'));
+  } finally {
+    loadingHistory.value = false;
+  }
+};
+
+const refreshDocuments = async () => {
+  await fetchDocuments(true);
+  if (selectedDocument.value) {
+    await selectDocument(selectedDocument.value);
+  }
+  ElMessage.success(store.t('Documents list refreshed successfully!'));
+};
 
 const generatingSkill = ref(false);
 

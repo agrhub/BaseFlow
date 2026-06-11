@@ -2,11 +2,25 @@
   <div class="code-details-panel-inner">
     <div class="code-header">
       <span>{{ store.t('Source Code') }}</span>
-      <el-button type="primary" :icon="CopyDocument" text bg round size="small" @click="copyCode" v-if="!isBinary">
-        {{ store.t('Copy') }}
-      </el-button>
+      <div style="display: flex; gap: 8px;">
+        <el-button 
+          :type="isReviewActive ? 'warning' : 'primary'" 
+          :icon="isReviewActive ? Cpu : Finished" 
+          text bg round size="small" 
+          @click="toggleCodeReview" 
+          v-if="!isBinary"
+        >
+          {{ isReviewActive ? store.t('View Code') : store.t('Code Review') }}
+        </el-button>
+        <el-button type="success" :icon="Download" text bg round size="small" @click="downloadTextFile" v-if="!isBinary">
+          {{ store.t('Download') }}
+        </el-button>
+        <el-button type="primary" :icon="CopyDocument" text bg round size="small" @click="copyCode" v-if="!isBinary">
+          {{ store.t('Copy') }}
+        </el-button>
+      </div>
     </div>
-    <div v-if="loading" class="code-editor-placeholder" :style="{ maxHeight: maxHeight }">
+    <div v-if="loading || diffLoading" class="code-editor-placeholder" :style="{ maxHeight: maxHeight }">
       <span>{{ store.t('Loading...') }}</span>
     </div>
     <div v-else-if="isBinary" class="media-viewer-container" :style="{ maxHeight: maxHeight }">
@@ -65,6 +79,25 @@
       </div>
     </div>
     <pre 
+      v-else-if="isReviewActive" 
+      class="code-editor-container diff-viewer-container" 
+      :style="{ maxHeight: maxHeight }"
+    >
+      <div v-if="diffLines.length === 0" class="empty-diff">
+        {{ store.t('No changes found compared to Git HEAD.') }}
+      </div>
+      <div 
+        v-else 
+        v-for="(line, idx) in diffLines" 
+        :key="idx" 
+        class="diff-line" 
+        :class="getDiffLineClass(line)"
+      >
+        <span class="diff-line-sign">{{ getDiffLineSign(line) }}</span>
+        <span class="diff-line-content">{{ getDiffLineContent(line) }}</span>
+      </div>
+    </pre>
+    <pre 
       v-else 
       class="code-editor-container" 
       :style="{ maxHeight: maxHeight }"
@@ -89,7 +122,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { CopyDocument, ChatDotRound, Download, Document } from '@element-plus/icons-vue';
+import { CopyDocument, ChatDotRound, Download, Document, Cpu, Finished } from '@element-plus/icons-vue';
 import { store } from '../../stores';
 import { ElMessage } from 'element-plus';
 import axios from 'axios';
@@ -355,6 +388,93 @@ const copyCode = () => {
     ElMessage.success(store.t('Source code copied to clipboard.'));
   }
 };
+
+const downloadTextFile = () => {
+  if (!props.sourceCode || !props.filePath) return;
+  const filename = getFileName(props.filePath);
+  const blob = new Blob([props.sourceCode], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  ElMessage.success(store.t('File downloaded successfully.'));
+};
+
+const isReviewActive = ref(false);
+const diffLines = ref<string[]>([]);
+const diffLoading = ref(false);
+
+const toggleCodeReview = async () => {
+  if (isReviewActive.value) {
+    isReviewActive.value = false;
+    return;
+  }
+  
+  if (!props.filePath || !store.activeConnection) return;
+  
+  diffLoading.value = true;
+  try {
+    const res = await axios.get(`/api/${store.activeConnection}/documents/diff`, {
+      params: { path: props.filePath }
+    });
+    const rawDiff = res.data.diff || '';
+    
+    if (!rawDiff.trim()) {
+      diffLines.value = [];
+    } else {
+      const allLines = rawDiff.split(/\r?\n/);
+      diffLines.value = allLines.filter((line: string) => {
+        if (line.startsWith('diff --git') || 
+            line.startsWith('index ') || 
+            line.startsWith('--- ') || 
+            line.startsWith('+++ ')) {
+          return false;
+        }
+        return true;
+      });
+      if (diffLines.value.every((line: string) => !line.trim())) {
+        diffLines.value = [];
+      }
+    }
+    
+    isReviewActive.value = true;
+  } catch (err: any) {
+    console.error('Code review error:', err);
+    ElMessage.error(store.t('Failed to fetch code diff: ') + (err.response?.data?.error || err.message));
+  } finally {
+    diffLoading.value = false;
+  }
+};
+
+const getDiffLineClass = (line: string) => {
+  if (line.startsWith('+')) return 'diff-added';
+  if (line.startsWith('-')) return 'diff-deleted';
+  if (line.startsWith('@@')) return 'diff-hunk';
+  return 'diff-context';
+};
+
+const getDiffLineSign = (line: string) => {
+  if (line.startsWith('+')) return '+';
+  if (line.startsWith('-')) return '-';
+  if (line.startsWith('@@')) return ' ';
+  return ' ';
+};
+
+const getDiffLineContent = (line: string) => {
+  if (line.startsWith('+') || line.startsWith('-')) {
+    return line.substring(1);
+  }
+  return line;
+};
+
+watch(() => props.filePath, () => {
+  isReviewActive.value = false;
+  diffLines.value = [];
+});
 
 watch(() => props.activeLine, (lineNum) => {
   if (lineNum !== null) {
@@ -653,6 +773,76 @@ onUnmounted(() => {
 @keyframes pulseOrange {
   0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.4)); }
   50% { transform: scale(1.08); filter: drop-shadow(0 0 16px rgba(245, 158, 11, 0.7)); }
+}
+
+/* ── Diff Viewer ── */
+.diff-viewer-container {
+  display: flex;
+  flex-direction: column;
+  background: #0f172a !important;
+  padding: 20px;
+}
+
+.diff-line {
+  display: flex;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 1px 8px;
+}
+
+.diff-line-sign {
+  width: 20px;
+  min-width: 20px;
+  text-align: center;
+  color: var(--text-muted, #64748b);
+  user-select: none;
+  font-weight: bold;
+}
+
+.diff-line-content {
+  flex: 1;
+}
+
+.diff-added {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+  color: #34d399 !important;
+  border-left: 3px solid #10b981;
+}
+
+.diff-added .diff-line-sign {
+  color: #34d399;
+}
+
+.diff-deleted {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  color: #f87171 !important;
+  border-left: 3px solid #ef4444;
+}
+
+.diff-deleted .diff-line-sign {
+  color: #f87171;
+}
+
+.diff-hunk {
+  background-color: rgba(99, 102, 241, 0.1) !important;
+  color: #a5b4fc !important;
+  font-style: italic;
+  font-weight: 500;
+  border-left: 3px solid #6366f1;
+}
+
+.diff-context {
+  color: #cbd5e1;
+}
+
+.empty-diff {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted, #64748b);
+  font-style: italic;
 }
 </style>
 

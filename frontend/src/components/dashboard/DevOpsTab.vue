@@ -72,57 +72,76 @@
         :healthScore="healthScore"
         :loadingHealth="loadingHealth"
         :providerLabel="providerLabel"
-        @loadHealthScore="loadHealthScore"
+        @loadHealthScore="refreshAll"
         @triggerHealthAnalysis="triggerHealthAnalysis"
         @triggerSecurityAudit="triggerSecurityAudit"
         @reviewPlaybook="reviewPlaybook"
       />
 
       <!-- Sub Tabs -->
-      <el-tabs v-model="activeTab" class="devops-sub-tabs">
-        <!-- ISSUES SUBTAB -->
-        <el-tab-pane name="issues">
-          <template #label>
-            <span class="tab-label"><el-icon><ChatLineSquare /></el-icon> {{ store.t('Open Issues') }} <span class="count-badge">{{ formatCount(issuesTotal) }}</span></span>
-          </template>
+      <div class="tabs-container">
+        <!-- <el-button
+          class="tabs-refresh-btn"
+          type="primary"
+          text
+          bg
+          round
+          size="small"
+          :icon="Refresh"
+          :loading="loadingActiveList"
+          @click="refreshActiveList"
+        >
+          {{ store.t('Refresh') }}
+        </el-button> -->
 
-          <DevOpsIssuesList
-            :provider="info.provider"
-            @update-total="val => issuesTotal = val"
-            @triage="triageIssue"
-            @autoFix="autoFixAndCreateMR"
-            @reviewPlaybook="reviewPlaybook"
-          />
-        </el-tab-pane>
+        <el-tabs v-model="activeTab" class="devops-sub-tabs">
+          <!-- ISSUES SUBTAB -->
+          <el-tab-pane name="issues">
+            <template #label>
+              <span class="tab-label"><el-icon><ChatLineSquare /></el-icon> {{ store.t('Open Issues') }} <span class="count-badge">{{ formatCount(issuesTotal) }}</span></span>
+            </template>
 
-        <!-- PR/MR SUBTAB -->
-        <el-tab-pane name="mrs">
-          <template #label>
-            <span class="tab-label"><el-icon><Star /></el-icon> {{ prTabLabel }} <span class="count-badge">{{ formatCount(mrsTotal) }}</span></span>
-          </template>
+            <DevOpsIssuesList
+              ref="issuesListRef"
+              :provider="info.provider"
+              @update-total="val => issuesTotal = val"
+              @triage="triageIssue"
+              @autoFix="autoFixAndCreateMR"
+              @reviewPlaybook="reviewPlaybook"
+            />
+          </el-tab-pane>
 
-          <DevOpsMrsList
-            :provider="info.provider"
-            @update-total="val => mrsTotal = val"
-            @reviewMergeRequest="reviewMergeRequest"
-            @reviewPlaybook="reviewPlaybook"
-          />
-        </el-tab-pane>
+          <!-- PR/MR SUBTAB -->
+          <el-tab-pane name="mrs">
+            <template #label>
+              <span class="tab-label"><el-icon><Star /></el-icon> {{ prTabLabel }} <span class="count-badge">{{ formatCount(mrsTotal) }}</span></span>
+            </template>
 
-        <!-- PIPELINES/RUNS SUBTAB -->
-        <el-tab-pane name="pipelines">
-          <template #label>
-            <span class="tab-label"><el-icon><Trophy /></el-icon> {{ pipelineTabLabel }} <span class="count-badge">{{ formatCount(pipelinesTotal) }}</span></span>
-          </template>
+            <DevOpsMrsList
+              ref="mrsListRef"
+              :provider="info.provider"
+              @update-total="val => mrsTotal = val"
+              @reviewMergeRequest="reviewMergeRequest"
+              @reviewPlaybook="reviewPlaybook"
+            />
+          </el-tab-pane>
 
-          <DevOpsPipelinesList
-            :provider="info.provider"
-            @update-total="val => pipelinesTotal = val"
-            @analyzePipeline="analyzePipeline"
-            @reviewPlaybook="reviewPlaybook"
-          />
-        </el-tab-pane>
-      </el-tabs>
+          <!-- PIPELINES/RUNS SUBTAB -->
+          <el-tab-pane name="pipelines">
+            <template #label>
+              <span class="tab-label"><el-icon><Trophy /></el-icon> {{ pipelineTabLabel }} <span class="count-badge">{{ formatCount(pipelinesTotal) }}</span></span>
+            </template>
+
+            <DevOpsPipelinesList
+              ref="pipelinesListRef"
+              :provider="info.provider"
+              @update-total="val => pipelinesTotal = val"
+              @analyzePipeline="analyzePipeline"
+              @reviewPlaybook="reviewPlaybook"
+            />
+          </el-tab-pane>
+        </el-tabs>
+      </div>
 
       <!-- Update credentials button -->
       <div class="settings-reset-row mt-4">
@@ -176,6 +195,40 @@ const tokenForm = reactive({
 const issuesTotal = ref(0);
 const mrsTotal = ref(0);
 const pipelinesTotal = ref(0);
+
+const issuesListRef = ref<any>(null);
+const mrsListRef = ref<any>(null);
+const pipelinesListRef = ref<any>(null);
+
+// const loadingActiveList = computed(() => {
+//   if (activeTab.value === 'issues') return issuesListRef.value?.loadingIssues || false;
+//   if (activeTab.value === 'mrs') return mrsListRef.value?.loadingMrs || false;
+//   if (activeTab.value === 'pipelines') return pipelinesListRef.value?.loadingPipelines || false;
+//   return false;
+// });
+
+// const refreshActiveList = () => {
+//   if (activeTab.value === 'issues' && issuesListRef.value) {
+//     issuesListRef.value.fetchIssues();
+//   } else if (activeTab.value === 'mrs' && mrsListRef.value) {
+//     mrsListRef.value.fetchMrs();
+//   } else if (activeTab.value === 'pipelines' && pipelinesListRef.value) {
+//     pipelinesListRef.value.fetchPipelines();
+//   }
+// };
+
+const refreshAll = () => {
+  loadHealthScore();
+  if (issuesListRef.value) {
+    issuesListRef.value.fetchIssues();
+  }
+  if (mrsListRef.value) {
+    mrsListRef.value.fetchMrs();
+  }
+  if (pipelinesListRef.value) {
+    pipelinesListRef.value.fetchPipelines();
+  }
+};
 
 const formatCount = (count: number) => {
   if (count >= 1000) {
@@ -506,5 +559,14 @@ onMounted(() => {
 .py-5 { padding-top: 32px; padding-bottom: 32px; }
 .text-center { text-align: center; }
 
+.tabs-container {
+  position: relative;
+}
 
+.tabs-refresh-btn {
+  position: absolute;
+  right: 0;
+  top: 4px;
+  z-index: 10;
+}
 </style>

@@ -35,6 +35,14 @@
           <el-button type="primary" round @click="startEdit">
             {{ store.t('Edit') }}
           </el-button>
+          <el-button 
+            type="success" 
+            round 
+            @click="runPlaybookFix"
+            v-if="isPlaybook"
+          >
+            🚀 {{ provider === 'github' ? store.t('Auto-Fix & Create PR') : store.t('Auto-Fix & Create MR') }}
+          </el-button>
         </template>
         <template v-else>
           <el-button @click="cancelEdit" round>{{ store.t('Cancel') }}</el-button>
@@ -48,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { store } from '../../stores';
 import { marked } from 'marked';
 import { Document } from '@element-plus/icons-vue';
@@ -59,6 +67,29 @@ const visible = ref(false);
 const isEditing = ref(false);
 const editContent = ref('');
 const saving = ref(false);
+const isPlaybook = computed(() => {
+  if (!store.playbookToReview?.filePath) return false;
+  return store.playbookToReview.filePath.includes('fix_issue');
+});
+
+const provider = computed(() => store.devopsInfo.provider);
+
+const runPlaybookFix = () => {
+  if (!store.playbookToReview || !store.activeConnection) return;
+  
+  const filePath = store.playbookToReview.filePath;
+  const match = filePath.match(/fix_issue_(\d+)\.md/);
+  const issueNumber = match ? match[1] : '';
+  
+  if (!issueNumber) {
+    ElMessage.error(store.t('Cannot determine issue number from playbook file path.'));
+    return;
+  }
+  
+  // Trigger playbook fix execution via the Chatbot sidebar
+  store.playbookExecutionRequest = { playbookFilePath: filePath, issueNumber };
+  // visible.value = false;
+};
 
 watch(() => store.playbookToReview, (newVal) => {
   if (newVal) {

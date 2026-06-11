@@ -57,15 +57,16 @@
           <ChatMessageBubble 
             v-for="(msg, idx) in messages" 
             :key="idx" 
-            v-show="msg.content !== '' || msg.role === 'user' || msg.isError" 
+            v-show="msg.content !== '' || msg.role === 'user' || msg.isError || (msg.thinkingLogs && msg.thinkingLogs.length > 0)" 
             :msg="msg" 
             :idx="idx" 
+            :processing="thinking && idx === messages.length - 1"
             @retry="handleRetry" 
             @speak="speakText" 
           />
 
           <!-- Thinking indicator -->
-          <div v-if="thinking" class="thinking-row">
+          <div v-if="showThinkingRow" class="thinking-row">
             <div class="bubble-avatar">🤖</div>
             <div class="thinking-indicator">
               <div class="typing-indicator">
@@ -139,6 +140,9 @@ interface LocalMessage {
   suggestions?: string[];
   visualBlocks?: string[];
   isError?: boolean;
+  thinkingLogs?: string[];
+  thinkingOpen?: boolean;
+  modifiedFiles?: string[];
 }
 
 interface SuggestionItem {
@@ -308,6 +312,15 @@ const mentionOptions = computed(() => {
   return opts.slice(0, 12);
 });
 
+const showThinkingRow = computed(() => {
+  if (!thinking.value) return false;
+  const lastMsg = messages.value[messages.value.length - 1];
+  if (!lastMsg || lastMsg.role !== 'assistant') return true;
+  const hasContent = lastMsg.content && lastMsg.content.trim() !== '';
+  const hasLogs = (lastMsg as any).thinkingLogs && (lastMsg as any).thinkingLogs.length > 0;
+  return !hasContent && !hasLogs;
+});
+
 // --- Chat history persistence ---
 const loadChatHistory = async () => {
   try {
@@ -352,6 +365,15 @@ watch(() => store.chatInput, (newVal) => {
 watch(() => store.chatSidebarOpen, (isOpen) => {
   if (isOpen) {
     scrollBottom();
+  }
+});
+
+watch(() => store.playbookExecutionRequest, (newVal) => {
+  if (newVal) {
+    const { playbookFilePath, issueNumber } = newVal;
+    store.playbookExecutionRequest = null; // Reset
+    store.chatSidebarOpen = true;
+    runPlaybookStream(playbookFilePath, issueNumber);
   }
 });
 
@@ -523,6 +545,90 @@ const sendChat = async (userText: string) => {
   } catch (error: any) {
     console.error('Chat error:', error);
     messages.value[agentMsgIndex].content = `❌ **Error:** Failed to get a response from the AI.`;
+    messages.value[agentMsgIndex].isError = true;
+  } finally {
+    thinking.value = false;
+    scrollBottom();
+  }
+};
+
+const runPlaybookStream = async (playbookPath: string, issueNumber: string) => {
+  if (thinking.value) return;
+  
+  messages.value.push({ role: 'user', content: `Execute playbook \`${playbookPath}\` to fix Issue #${issueNumber}` });
+  scrollBottom();
+
+  thinking.value = true;
+  const agentMsgIndex = messages.value.push({ role: 'assistant', content: '', thinkingLogs: [], thinkingOpen: true } as any) - 1;
+
+  try {
+    const res = await fetch(`/api/${store.activeConnection}/devops/run-playbook/stream?playbookPath=${encodeURIComponent(playbookPath)}&issueNumber=${encodeURIComponent(issueNumber)}`, {
+      method: 'GET'
+    });
+
+    if (!res.ok || !res.body) {
+      const errText = await res.text();
+      throw new Error(errText || 'Network error');
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const dataStr = line.substring(6);
+          try {
+            const data = JSON.parse(dataStr);
+            if (data.error) {
+              // Normalize \n → \n\n so markdown renders each line as its own paragraph
+              const errFormatted = data.error.replace(/\n/g, '\n\n');
+              messages.value[agentMsgIndex].content += `\n\n❌ **Error:** ${errFormatted}`;
+              messages.value[agentMsgIndex].isError = true;
+              scrollBottom();
+            } else if (data.modifiedFiles) {
+              messages.value[agentMsgIndex].modifiedFiles = data.modifiedFiles;
+              scrollBottom();
+            } else if (data.log) {
+              const logLines = data.log.split('\n');
+              for (const logLine of logLines) {
+                if (logLine.trim()) {
+                  if (!messages.value[agentMsgIndex].thinkingLogs) {
+                    messages.value[agentMsgIndex].thinkingLogs = [];
+                  }
+                  messages.value[agentMsgIndex].thinkingLogs!.push(logLine);
+                }
+              }
+              scrollBottom();
+            } else if (data.chunk) {
+              messages.value[agentMsgIndex].content += data.chunk;
+              scrollBottom();
+            } else if (data.done) {
+              messages.value[agentMsgIndex].content += `\n\n✅ **Playbook executed successfully!**`;
+              if (data.mrUrl) {
+                messages.value[agentMsgIndex].content += `\n\n[View Merge Request](${data.mrUrl})`;
+                window.open(data.mrUrl, '_blank');
+              }
+              axios.get(`/api/${store.activeConnection}/stats`).then(() => {
+                store.fetchSidebar();
+              }).catch(console.error);
+              scrollBottom();
+            }
+          } catch(e) {}
+        }
+      }
+    }
+  } catch (error: any) {
+    console.error('Run playbook error:', error);
+    messages.value[agentMsgIndex].content = `❌ **Error:** Failed to run playbook. ${error.message}`;
     messages.value[agentMsgIndex].isError = true;
   } finally {
     thinking.value = false;

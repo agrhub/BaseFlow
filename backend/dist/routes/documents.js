@@ -39,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const child_process_1 = require("child_process");
 const helpers_1 = require("./helpers");
 const GeminiService_1 = require("../services/GeminiService");
 const prompts_1 = require("../prompts/prompts");
@@ -96,6 +97,47 @@ router.get('/:conn/documents/content', async (req, res) => {
     }
     catch (error) {
         console.error('Document read error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// 2b. GET Document file diff (git diff)
+router.get('/:conn/documents/diff', async (req, res) => {
+    const { conn } = req.params;
+    const docPath = req.query.path;
+    if (!docPath) {
+        return res.status(400).json({ error: 'path parameter is required' });
+    }
+    try {
+        const { repoPath } = await (0, helpers_1.getOrScanRepo)(conn);
+        const safePath = path.resolve(path.join(repoPath, docPath));
+        if (!safePath.startsWith(path.resolve(repoPath))) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        if (!fs.existsSync(safePath)) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+        const relativePath = path.relative(repoPath, safePath).replace(/\\/g, '/');
+        (0, child_process_1.exec)(`git ls-files --error-unmatch "${relativePath}"`, { cwd: repoPath }, (lsError) => {
+            if (lsError) {
+                // File is untracked, compare with empty file
+                const nullDev = process.platform === 'win32' ? 'NUL' : '/dev/null';
+                (0, child_process_1.exec)(`git diff --no-index ${nullDev} "${relativePath}"`, { cwd: repoPath }, (diffError, diffStdout) => {
+                    res.json({ diff: diffStdout || '' });
+                });
+            }
+            else {
+                // File is tracked, run git diff HEAD
+                (0, child_process_1.exec)(`git diff HEAD -- "${relativePath}"`, { cwd: repoPath }, (diffError, diffStdout, diffStderr) => {
+                    if (diffError && diffError.code && diffError.code > 1) {
+                        return res.status(500).json({ error: diffStderr || diffError.message });
+                    }
+                    res.json({ diff: diffStdout || '' });
+                });
+            }
+        });
+    }
+    catch (error) {
+        console.error('Document diff error:', error);
         res.status(500).json({ error: error.message });
     }
 });

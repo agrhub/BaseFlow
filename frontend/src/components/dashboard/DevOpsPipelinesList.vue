@@ -1,9 +1,21 @@
 <template>
   <div v-loading="loadingPipelines" class="issues-list">
     <!-- Header row like GitHub -->
-    <div class="list-header" v-if="pipelines.length > 0">
-      <el-icon class="status-icon"><VideoPlay /></el-icon>
-      <span class="open-count">{{ totalCount }} {{ store.t('Workflow Runs') }}</span>
+    <div class="list-header">
+      <div class="header-left">
+        <el-icon class="status-icon"><VideoPlay /></el-icon>
+        <span class="open-count">{{ totalCount }} {{ store.t('Workflow Runs') }}</span>
+      </div>
+      <el-button 
+        type="primary" 
+        link 
+        size="small" 
+        :icon="Refresh" 
+        :loading="loadingPipelines" 
+        @click="fetchPipelines"
+      >
+        {{ store.t('Refresh') }}
+      </el-button>
     </div>
 
     <!-- Pipelines List -->
@@ -74,7 +86,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue';
 import { store } from '../../stores';
-import { DataLine, Link, VideoPlay, FolderOpened, CircleCheckFilled, CircleCloseFilled, InfoFilled, Loading, Calendar, Guide } from '@element-plus/icons-vue';
+import { DataLine, Link, VideoPlay, FolderOpened, CircleCheckFilled, CircleCloseFilled, InfoFilled, Loading, Calendar, Guide, Refresh } from '@element-plus/icons-vue';
 import axios from 'axios';
 
 defineProps<{
@@ -163,6 +175,11 @@ const formatDate = (dateStr: string) => {
   if (diffDays < 30) return `${diffDays} ${store.t('days ago')}`;
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
+
+defineExpose({
+  fetchPipelines,
+  loadingPipelines
+});
 </script>
 
 <style scoped>
@@ -179,9 +196,15 @@ const formatDate = (dateStr: string) => {
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
   font-weight: 600;
   font-size: 0.95rem;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .status-icon {

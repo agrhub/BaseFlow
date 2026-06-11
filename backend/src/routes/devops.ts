@@ -13,6 +13,7 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 import { modifiedFiles } from '../agent/tools/types';
+import { runPlaybookCli, commitToGitHub, executePlaybookWorkflow, resolveGitHubDefaultBranch, resolveGitLabDefaultBranch } from '../utils/playbook';
 
 const router = express.Router();
 
@@ -457,111 +458,7 @@ router.get('/:conn/devops/mr-diff/:iid', async (req, res) => {
   }
 });
 
-// GitHub commit helper using Git database REST APIs
-async function commitToGitHub(
-  owner: string,
-  repo: string,
-  token: string,
-  branchName: string,
-  baseBranch: string,
-  commitMessage: string,
-  files: { path: string; content: string }[]
-): Promise<string> {
-  const headers: Record<string, string> = {
-    'Accept': 'application/vnd.github.v3+json',
-    'User-Agent': 'BaseFlow-App',
-    'Authorization': `token ${token}`,
-    'Content-Type': 'application/json'
-  };
 
-  // 1. Get base branch SHA
-  const refRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${baseBranch}`, { headers });
-  if (!refRes.ok) {
-    throw new Error(`Failed to get base branch ref: ${refRes.statusText} (${refRes.status})`);
-  }
-  const refData = await refRes.json() as any;
-  const baseCommitSha = refData.object.sha;
-
-  // 2. Create blobs
-  const treeItems = [];
-  for (const file of files) {
-    const blobRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/blobs`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        content: file.content,
-        encoding: 'utf-8'
-      })
-    });
-    if (!blobRes.ok) {
-      throw new Error(`Failed to create blob for ${file.path}: ${blobRes.statusText} (${blobRes.status})`);
-    }
-    const blobData = await blobRes.json() as any;
-    treeItems.push({
-      path: file.path,
-      mode: '100644',
-      type: 'blob',
-      sha: blobData.sha
-    });
-  }
-
-  // 3. Create tree
-  const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      base_tree: baseCommitSha,
-      tree: treeItems
-    })
-  });
-  if (!treeRes.ok) {
-    throw new Error(`Failed to create tree: ${treeRes.statusText} (${treeRes.status})`);
-  }
-  const treeData = await treeRes.json() as any;
-  const treeSha = treeData.sha;
-
-  // 4. Create commit
-  const commitRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/commits`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      message: commitMessage,
-      tree: treeSha,
-      parents: [baseCommitSha]
-    })
-  });
-  if (!commitRes.ok) {
-    throw new Error(`Failed to create commit: ${commitRes.statusText} (${commitRes.status})`);
-  }
-  const commitData = await commitRes.json() as any;
-  const commitSha = commitData.sha;
-
-  // 5. Create branch ref
-  const createRefRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      ref: `refs/heads/${branchName}`,
-      sha: commitSha
-    })
-  });
-  if (!createRefRes.ok) {
-    // If branch already exists, update it instead (force: true)
-    const updateRefRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${branchName}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({
-        sha: commitSha,
-        force: true
-      })
-    });
-    if (!updateRefRes.ok) {
-      throw new Error(`Failed to create or update branch ref: ${createRefRes.statusText} (${createRefRes.status})`);
-    }
-  }
-  
-  return commitSha;
-}
 
 // 15. Auto create Merge/Pull Request using Git APIs
 router.post('/:conn/devops/auto-create-mr', async (req, res) => {
@@ -609,9 +506,11 @@ router.post('/:conn/devops/auto-create-mr', async (req, res) => {
       return res.status(400).json({ error: 'No modified files or playbooks found in workspace to commit' });
     }
 
-    const baseBranch = devops.profile.options?.branch || 'main';
+    let baseBranch = devops.profile.options?.branch || 'main';
 
     if (devops.provider === 'github') {
+      // Auto-detect real default branch (e.g. repo might use "master" not "main")
+      baseBranch = await resolveGitHubDefaultBranch(devops.owner, devops.repo, token, baseBranch);
       // 1. Commit files and create branch using Git database API
       await commitToGitHub(devops.owner, devops.repo, token, branchName, baseBranch, mrTitle, filesToCommit);
       
@@ -645,24 +544,17 @@ router.post('/:conn/devops/auto-create-mr', async (req, res) => {
       res.json({ success: true, mrUrl: prData.html_url });
       
     } else if (devops.provider === 'gitlab') {
-      // 1. Prepare commit actions
-      const actions = filesToCommit.map(file => {
-        let fileExists = false;
-        try {
-          const cachePath = resolveCachePath(conn);
-          if (fs.existsSync(cachePath)) {
-            const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
-            fileExists = cacheData.classes.some((c: any) => c.filePath === file.path);
-          }
-        } catch (_) {}
-        
-        return {
-          action: fileExists ? 'update' : 'create',
-          file_path: file.path,
-          content: file.content
-        };
-      });
-      
+      // Auto-detect real default branch for GitLab
+      baseBranch = await resolveGitLabDefaultBranch(devops.fullPath, token, baseBranch);
+
+      // 1. Prepare commit actions with base64 encoding
+      const actions = filesToCommit.map(file => ({
+        action: 'create' as const,
+        file_path: file.path,
+        content: Buffer.from(file.content, 'utf-8').toString('base64'),
+        encoding: 'base64'
+      }));
+
       const urlEncodedPath = encodeURIComponent(devops.fullPath);
       const commitUrl = `https://gitlab.com/api/v4/projects/${urlEncodedPath}/repository/commits`;
       const headers = {
@@ -677,13 +569,19 @@ router.post('/:conn/devops/auto-create-mr', async (req, res) => {
           branch: branchName,
           start_branch: baseBranch,
           commit_message: mrTitle,
-          actions: actions
+          actions
         })
       });
       
       if (!commitResponse.ok) {
         const errorData = await commitResponse.json() as any;
-        throw new Error(`GitLab commit error: ${errorData.message || commitResponse.statusText}`);
+        const detail = Array.isArray(errorData?.message)
+          ? errorData.message.join('; ')
+          : (errorData?.message || commitResponse.statusText);
+        throw new Error(
+          `GitLab commit error: ${detail} (HTTP ${commitResponse.status})\n` +
+          `💡 Make sure your token has 'api' scope and Maintainer/Developer access to ${devops.fullPath}.`
+        );
       }
       
       // 2. Create Merge Request
@@ -701,7 +599,13 @@ router.post('/:conn/devops/auto-create-mr', async (req, res) => {
       
       if (!mrResponse.ok) {
         const errorData = await mrResponse.json() as any;
-        throw new Error(`GitLab MR creation error: ${errorData.message || mrResponse.statusText}`);
+        const detail = Array.isArray(errorData?.message)
+          ? errorData.message.join('; ')
+          : (errorData?.message || mrResponse.statusText);
+        throw new Error(
+          `GitLab MR creation error: ${detail} (HTTP ${mrResponse.status})\n` +
+          `💡 Ensure branch "${branchName}" was created and the token has MR creation rights.`
+        );
       }
       
       const mrData = await mrResponse.json() as any;
@@ -796,4 +700,90 @@ router.post('/:conn/devops/submit-mr-review', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// 17. Run Playbook using Antigravity/Gemini CLI and create PR/MR via REST API (Streaming logs)
+router.get('/:conn/devops/run-playbook/stream', async (req, res) => {
+  const { conn } = req.params;
+  const { playbookPath, issueNumber } = req.query as { playbookPath: string; issueNumber: string };
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const sendChunk = (chunk: string) => {
+    res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+  };
+
+  const sendError = (error: string) => {
+    res.write(`data: ${JSON.stringify({ error })}\n\n`);
+  };
+
+  const sendDone = (data: any) => {
+    res.write(`data: ${JSON.stringify({ done: true, ...data })}\n\n`);
+  };
+
+  if (!playbookPath || !issueNumber) {
+    sendError('playbookPath and issueNumber are required');
+    return res.end();
+  }
+
+  try {
+    const devops = await getDevOpsInfo(conn);
+    if (!devops) {
+      sendError('Profile not found');
+      return res.end();
+    }
+    const token = getDevOpsToken(devops);
+    if (!token) {
+      sendError('Token not configured');
+      return res.end();
+    }
+
+    const repoPath = resolveRepoPath(devops.profile);
+    if (!fs.existsSync(repoPath)) {
+      sendError(`Repository path does not exist: ${repoPath}`);
+      return res.end();
+    }
+
+    const fullPlaybookPath = path.join(repoPath, playbookPath);
+    if (!fs.existsSync(fullPlaybookPath)) {
+      sendError(`Playbook file not found at ${playbookPath}`);
+      return res.end();
+    }
+
+    await executePlaybookWorkflow({
+      conn,
+      repoPath,
+      playbookPath,
+      issueNumber,
+      devops,
+      token,
+      logLabel: 'Run Playbook',
+      onChunk: (chunk, isSystemLog) => {
+        if (isSystemLog) {
+          res.write(`data: ${JSON.stringify({ log: chunk })}\n\n`);
+        } else {
+          res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+        }
+      },
+      onError: (err) => {
+        sendError(err);
+        res.end();
+      },
+      onDone: (mrUrl) => {
+        sendDone({ success: true, mrUrl });
+        res.end();
+      },
+      onModifiedFiles: (files) => {
+        res.write(`data: ${JSON.stringify({ modifiedFiles: files })}\n\n`);
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Run Playbook endpoint error:', error);
+    sendError(error.message);
+    res.end();
+  }
+});
+
 export default router;

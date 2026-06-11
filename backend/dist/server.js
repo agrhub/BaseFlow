@@ -52,6 +52,7 @@ const chat_1 = __importDefault(require("./routes/chat"));
 const devops_1 = __importDefault(require("./routes/devops"));
 const diagrams_1 = __importDefault(require("./routes/diagrams"));
 const documents_1 = __importDefault(require("./routes/documents"));
+const cliInstaller_1 = require("./utils/cliInstaller");
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 5000;
 // CORS configuration supporting credentials sharing during local hot-reloads
@@ -128,6 +129,7 @@ if (frontendDist) {
 else {
     console.warn('Frontend static assets folder not found. Serving API endpoints only.');
 }
+(0, cliInstaller_1.ensureGeminiCliPatched)();
 // Start Express Server
 app.listen(PORT, () => {
     console.log(`Backend server is running on http://localhost:${PORT}`);
