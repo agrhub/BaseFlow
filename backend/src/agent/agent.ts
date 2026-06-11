@@ -150,6 +150,8 @@ export function createAgentRunner(config: AgentConfig) {
 // ---- Persistent chat history (in-memory per session) ----
 const chatHistoryStore: Map<string, Array<{ role: string; content: string }>> = new Map();
 
+export const activeStreams = new Map<string, (chunk: string) => void>();
+
 export function getChatHistory(sessionId: string) {
   return chatHistoryStore.get(sessionId) || [];
 }
@@ -171,28 +173,30 @@ export async function chatWithAgent(
   navigate?: { tab?: string; connectionName?: string };
   actions: Array<{ type: string; payload: any }>;
 }> {
-  // Ensure session exists
-  const existingSession = await (runner as any).sessionService.getSession({
-    appName: (runner as any).appName,
-    userId: sessionId,
-    sessionId
-  });
-  if (!existingSession) {
-    await (runner as any).sessionService.createSession({
+  if (onStream) {
+    activeStreams.set(sessionId, onStream);
+  }
+  try {
+    // Ensure session exists
+    const existingSession = await (runner as any).sessionService.getSession({
       appName: (runner as any).appName,
       userId: sessionId,
       sessionId
     });
-  }
+    if (!existingSession) {
+      await (runner as any).sessionService.createSession({
+        appName: (runner as any).appName,
+        userId: sessionId,
+        sessionId
+      });
+    }
 
-  // Inject UI context into the user message
-  let userText = message;
-  if (uiContext) {
-    const tabStr = uiContext.tab ? `Tab: "${uiContext.tab}"` : 'Tab: generate';
-    const connStr = uiContext.connection ? `Connection: "${uiContext.connection}"` : 'Connection: none';
-    const itemStr = uiContext.activeItem ? `ActiveItem: "${uiContext.activeItem}"` : 'ActiveItem: none';
-    userText = `[UI Context | ${tabStr}, ${connStr}, ${itemStr}]\n${message}`;
-  }
+  // Inject UI context and session details into the user message
+  const tabStr = uiContext?.tab ? `Tab: "${uiContext.tab}"` : 'Tab: generate';
+  const connStr = uiContext?.connection ? `Connection: "${uiContext.connection}"` : 'Connection: none';
+  const itemStr = uiContext?.activeItem ? `ActiveItem: "${uiContext.activeItem}"` : 'ActiveItem: none';
+  const sessionStr = `SessionId: "${sessionId}"`;
+  const userText = `[UI Context | ${tabStr}, ${connStr}, ${itemStr}, ${sessionStr}]\n${message}`;
 
   // Save user message to history
   const history = chatHistoryStore.get(sessionId) || [];
@@ -232,6 +236,8 @@ export async function chatWithAgent(
     } else {
       responseMessage = `⚠️ The agent encountered an error: ${msg.substring(0, 120)}. Please try again.`;
     }
+  } finally {
+    activeStreams.delete(sessionId);
   }
 
 
@@ -300,6 +306,12 @@ export async function chatWithAgent(
     navigate,
     actions
   };
+  } catch (err: any) {
+    console.error('[Agent] chatWithAgent outer error:', err);
+    throw err;
+  } finally {
+    activeStreams.delete(sessionId);
+  }
 }
 
 export async function clearAgentSession(runner: any, sessionId: string): Promise<void> {

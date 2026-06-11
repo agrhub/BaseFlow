@@ -1,9 +1,21 @@
 <template>
   <div v-loading="loadingIssues" class="issues-list">
     <!-- Header row like GitHub -->
-    <div class="list-header" v-if="issues.length > 0">
-      <el-icon class="status-icon open"><Warning /></el-icon>
-      <span class="open-count">{{ totalCount }} {{ store.t('Open') }}</span>
+    <div class="list-header">
+      <div class="header-left">
+        <el-icon class="status-icon open"><Warning /></el-icon>
+        <span class="open-count">{{ totalCount }} {{ store.t('Open') }}</span>
+      </div>
+      <el-button 
+        type="primary" 
+        link 
+        size="small" 
+        icon="Refresh" 
+        :loading="loadingIssues" 
+        @click="fetchIssues"
+      >
+        {{ store.t('Refresh') }}
+      </el-button>
     </div>
 
     <!-- Issues List -->
@@ -35,21 +47,21 @@
             v-else 
             type="primary" 
             text bg round size="small" 
-            :icon="MagicStick" 
+            icon="MagicStick" 
             @click="$emit('triage', issue)"
           >
             {{ store.t('AI Analysis') }}
           </el-button>
           
-          <el-button 
+          <!-- <el-button 
             type="success" 
             text bg round size="small" 
             :icon="Cpu" 
             @click="$emit('autoFix', issue)" 
-            v-if="provider === 'gitlab'"
+            v-if="(provider === 'gitlab' || provider === 'github') && store.linkedPlaybooks[issue.iid]"
           >
-            {{ store.t('Auto-Fix & Create MR') }}
-          </el-button>
+            {{ provider === 'github' ? store.t('Auto-Fix & Create PR') : store.t('Auto-Fix & Create MR') }}
+          </el-button> -->
         </div>
       </div>
     </div>
@@ -93,7 +105,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue';
 import { store } from '../../stores';
-import { MagicStick, Cpu, FolderOpened, Warning } from '@element-plus/icons-vue';
+// import { MagicStick, Cpu, FolderOpened, Warning, Refresh } from '@element-plus/icons-vue';
 import axios from 'axios';
 
 import MarkdownIt from 'markdown-it';
@@ -178,6 +190,11 @@ const formatDate = (dateStr: string) => {
   if (diffDays < 30) return `${diffDays} ${store.t('days ago')}`;
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
+
+defineExpose({
+  fetchIssues,
+  loadingIssues
+});
 </script>
 
 <style scoped>
@@ -194,9 +211,15 @@ const formatDate = (dateStr: string) => {
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
   font-weight: 600;
   font-size: 0.95rem;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .status-icon.open {

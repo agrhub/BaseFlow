@@ -1,9 +1,21 @@
 <template>
   <div v-loading="loadingMrs" class="issues-list">
     <!-- Header row like GitHub -->
-    <div class="list-header" v-if="mrs.length > 0">
-      <el-icon class="status-icon open"><Right /></el-icon>
-      <span class="open-count">{{ totalCount }} {{ store.t('Open') }}</span>
+    <div class="list-header">
+      <div class="header-left">
+        <el-icon class="status-icon open"><Right /></el-icon>
+        <span class="open-count">{{ totalCount }} {{ store.t('Open') }}</span>
+      </div>
+      <el-button 
+        type="primary" 
+        link 
+        size="small" 
+        :icon="Refresh" 
+        :loading="loadingMrs" 
+        @click="fetchMrs"
+      >
+        {{ store.t('Refresh') }}
+      </el-button>
     </div>
 
     <!-- MRs List -->
@@ -37,7 +49,6 @@
             {{ store.t('Review Playbook') }}
           </el-button>
           <el-button 
-            v-else
             type="primary" 
             text bg round size="small" 
             :icon="MagicStick" 
@@ -88,7 +99,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue';
 import { store } from '../../stores';
-import { MagicStick, Right, FolderOpened } from '@element-plus/icons-vue';
+import { MagicStick, Right, FolderOpened, Refresh } from '@element-plus/icons-vue';
 import axios from 'axios';
 
 import MarkdownIt from 'markdown-it';
@@ -172,6 +183,11 @@ const formatDate = (dateStr: string) => {
   if (diffDays < 30) return `${diffDays} ${store.t('days ago')}`;
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
+
+defineExpose({
+  fetchMrs,
+  loadingMrs
+});
 </script>
 
 <style scoped>
@@ -188,9 +204,15 @@ const formatDate = (dateStr: string) => {
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
   font-weight: 600;
   font-size: 0.95rem;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .status-icon.open {
