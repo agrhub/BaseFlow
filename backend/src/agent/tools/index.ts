@@ -17,7 +17,9 @@ import {
   auditSecurityVulnerabilitiesTool,
   writeWorkspaceFileTool,
   readWorkspaceFileTool,
-  executePlaybookWithGeminiTool
+  executePlaybookWithGeminiTool,
+  startAntigravityAuthTool,
+  submitAntigravityAuthCodeTool
 } from './devops.tools';
 
 export * from './types';
@@ -38,5 +40,7 @@ export const allTools: FunctionTool[] = [
   auditSecurityVulnerabilitiesTool,
   writeWorkspaceFileTool,
   readWorkspaceFileTool,
-  executePlaybookWithGeminiTool
+  executePlaybookWithGeminiTool,
+  startAntigravityAuthTool,
+  submitAntigravityAuthCodeTool
 ];

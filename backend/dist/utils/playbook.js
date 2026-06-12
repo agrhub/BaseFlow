@@ -33,6 +33,10 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.resolveAgyBinary = resolveAgyBinary;
+exports.getAgyProfileDir = getAgyProfileDir;
+exports.restoreAgyCredentials = restoreAgyCredentials;
+exports.saveAgyCredentials = saveAgyCredentials;
 exports.runPlaybookCli = runPlaybookCli;
 exports.resolveGitHubDefaultBranch = resolveGitHubDefaultBranch;
 exports.resolveGitLabDefaultBranch = resolveGitLabDefaultBranch;
@@ -41,16 +45,108 @@ exports.executePlaybookWorkflow = executePlaybookWorkflow;
 const child_process_1 = require("child_process");
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const ConnectionStore_1 = require("../services/ConnectionStore");
 /**
- * Common helper to resolve path and spawn the gemini-cli process
+ * Resolves the path to the agy binary.
+ */
+function resolveAgyBinary() {
+    const isWin = process.platform === 'win32';
+    if (isWin) {
+        const userProfile = process.env.USERPROFILE || 'C:\\Users\\default';
+        const winPath = path.join(userProfile, 'AppData', 'Local', 'agy', 'bin', 'agy.exe');
+        if (fs.existsSync(winPath)) {
+            return winPath;
+        }
+    }
+    else {
+        const home = process.env.HOME || '/root';
+        const paths = [
+            path.join(home, '.local', 'bin', 'agy'),
+            '/usr/local/bin/agy',
+            '/usr/bin/agy'
+        ];
+        for (const p of paths) {
+            if (fs.existsSync(p)) {
+                return p;
+            }
+        }
+    }
+    return 'agy';
+}
+/**
+ * Gets the isolated data directory profile path for a connection.
+ */
+function getAgyProfileDir(connName) {
+    const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'data');
+    return path.join(dataDir, 'agy_profiles', connName);
+}
+/**
+ * Restores the connection-specific OAuth credentials from the database to disk.
+ */
+async function restoreAgyCredentials(connName) {
+    const profileDir = getAgyProfileDir(connName);
+    const geminiDir = path.join(profileDir, '.gemini');
+    const credsFile = path.join(geminiDir, 'oauth_creds.json');
+    const conn = await ConnectionStore_1.connectionStore.getConnection(connName);
+    if (!conn || !conn.agy_auth_code) {
+        return false;
+    }
+    if (!fs.existsSync(geminiDir)) {
+        fs.mkdirSync(geminiDir, { recursive: true });
+    }
+    fs.writeFileSync(credsFile, conn.agy_auth_code, 'utf-8');
+    return true;
+}
+/**
+ * Saves the connection-specific OAuth credentials from disk to the database.
+ */
+async function saveAgyCredentials(connName) {
+    const profileDir = getAgyProfileDir(connName);
+    const credsFile = path.join(profileDir, '.gemini', 'oauth_creds.json');
+    if (!fs.existsSync(credsFile)) {
+        return false;
+    }
+    try {
+        const credsContent = fs.readFileSync(credsFile, 'utf-8');
+        JSON.parse(credsContent); // Validate JSON
+        const conn = await ConnectionStore_1.connectionStore.getConnection(connName);
+        if (conn) {
+            await ConnectionStore_1.connectionStore.saveConnection(conn.name, conn.uri, conn.options, credsContent);
+            return true;
+        }
+    }
+    catch (err) {
+        console.error('Failed to save agy credentials to DB:', err);
+    }
+    return false;
+}
+/**
+ * Common helper to resolve path and spawn the agy CLI process
  * with proper API keys and Vertex AI environment variables.
  */
-function runPlaybookCli(options) {
-    const { repoPath, playbookPath, logLabel, onData } = options;
+async function runPlaybookCli(options) {
+    const { conn, repoPath, playbookPath, logLabel, onData } = options;
     const useVertex = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
     const hasServiceAccount = !!process.env.GOOGLE_APPLICATION_CREDENTIALS || !!process.env.CLOUD_RUN;
     // Build subprocess env — start from current process env
     const env = { ...process.env };
+    if (conn) {
+        const profileDir = getAgyProfileDir(conn);
+        try {
+            const restored = await restoreAgyCredentials(conn);
+            if (restored) {
+                onData(`[${logLabel}] Restored authenticated credentials for connection profile: ${conn}\n`);
+            }
+        }
+        catch (err) {
+            onData(`[${logLabel}] Warning restoring credentials: ${err.message}\n`);
+        }
+        // Isolate agy data directory per connection profile
+        env['USERPROFILE'] = profileDir;
+        env['HOME'] = profileDir;
+        env['APPDATA'] = path.join(profileDir, 'AppData', 'Roaming');
+        env['LOCALAPPDATA'] = path.join(profileDir, 'AppData', 'Local');
+    }
     if (useVertex) {
         const resolvedLocation = process.env.GOOGLE_CLOUD_LOCATION || 'global';
         env['GOOGLE_GENAI_USE_VERTEXAI'] = 'true';
@@ -60,14 +156,12 @@ function runPlaybookCli(options) {
         }
         if (hasServiceAccount) {
             // Service Account auth → GOOGLE_API_KEY is not needed and would confuse the CLI
-            // "Both GOOGLE_API_KEY and GEMINI_API_KEY are set" warning → CLI picks wrong quota
             delete env['GOOGLE_API_KEY'];
             delete env['GEMINI_API_KEY'];
             onData(`[${logLabel}] Using Vertex AI with Service Account (${process.env.GOOGLE_APPLICATION_CREDENTIALS || 'Implicit Cloud Run Service Account'}), location: ${resolvedLocation}\n`);
         }
         else {
-            // API Key + Vertex AI backend: keep GOOGLE_API_KEY for auth, but remove GEMINI_API_KEY
-            // to avoid the "Both keys set" warning that makes CLI fall back to free-tier quota
+            // API Key + Vertex AI backend
             const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
             if (!apiKey) {
                 throw new Error('Vertex AI requires either GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_API_KEY.');
@@ -78,42 +172,26 @@ function runPlaybookCli(options) {
         }
     }
     else {
-        const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
-        if (!apiKey) {
-            throw new Error('Google/Gemini API Key is not configured in backend environment.');
+        // If not using Vertex AI and we have no restored OAuth token in profile, fall back to API Key
+        const connProfile = conn ? await ConnectionStore_1.connectionStore.getConnection(conn) : null;
+        const hasOauth = connProfile && connProfile.agy_auth_code;
+        if (!hasOauth) {
+            const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
+            if (!apiKey) {
+                throw new Error('Google/Gemini API Key or OAuth credentials not configured.');
+            }
+            env['GEMINI_API_KEY'] = apiKey;
+            delete env['GOOGLE_API_KEY'];
+            env['GOOGLE_GENAI_USE_VERTEXAI'] = 'false';
+            onData(`[${logLabel}] Using Google AI Studio (API Key)\n`);
         }
-        env['GEMINI_API_KEY'] = apiKey;
-        delete env['GOOGLE_API_KEY'];
-        env['GOOGLE_GENAI_USE_VERTEXAI'] = 'false';
-        onData(`[${logLabel}] Using Google AI Studio (API Key)\n`);
+        else {
+            onData(`[${logLabel}] Using Authenticated Google Account (OAuth via agy CLI)\n`);
+        }
     }
     env['GEMINI_CLI_TRUST_WORKSPACE'] = 'true';
     env['PAGER'] = 'cat';
-    // Resolve gemini.js absolute path
-    let geminiJsPath = '';
-    try {
-        geminiJsPath = require.resolve('@google/gemini-cli/bundle/gemini.js');
-    }
-    catch (_) {
-        try {
-            const localPath = path.join(__dirname, '..', '..', 'node_modules', '@google', 'gemini-cli', 'bundle', 'gemini.js');
-            if (fs.existsSync(localPath)) {
-                geminiJsPath = localPath;
-            }
-        }
-        catch (_) { }
-    }
-    if (!geminiJsPath) {
-        try {
-            const globalRoot = (0, child_process_1.execSync)('npm root -g').toString().trim();
-            const testPath = path.join(globalRoot, '@google', 'gemini-cli', 'bundle', 'gemini.js');
-            if (fs.existsSync(testPath)) {
-                geminiJsPath = testPath;
-            }
-        }
-        catch (_) { }
-    }
-    const model = process.env.GEMINI_CLI_MODEL || process.env.AGENT_MODEL || 'gemini-2.5-flash';
+    const model = process.env.GEMINI_CLI_MODEL || process.env.AGENT_MODEL || 'gemini-3.5-flash';
     const agentPrompt = `You are a highly capable AI software engineer. You are given a playbook file that lists relevant files/classes and high-level fix instructions.
 Your task is to:
 1. Examine the relevant files/classes listed in the playbook file: "${playbookPath}".
@@ -127,36 +205,19 @@ After you have completed all changes, you MUST output the final list of all modi
 MODIFIED_FILES:["src/main.ts", "src/helper.ts"]
 
 Do not output any other text after this JSON array.`;
-    if (geminiJsPath) {
-        onData(`[${logLabel}] Spawning Node with gemini.js at: ${geminiJsPath} (Model: ${model})\n`);
-        return (0, child_process_1.spawn)('node', [
-            geminiJsPath,
-            '--skip-trust',
-            '-y',
-            '-m',
-            model,
-            '-p',
-            agentPrompt
-        ], {
-            cwd: repoPath,
-            env
-        });
-    }
-    else {
-        onData(`[${logLabel}] gemini.js not found. Spawning 'gemini' CLI in shell mode... (Model: ${model})\n`);
-        return (0, child_process_1.spawn)('gemini', [
-            '--skip-trust',
-            '-y',
-            '-m',
-            model,
-            '-p',
-            agentPrompt
-        ], {
-            cwd: repoPath,
-            env,
-            shell: process.platform === 'win32'
-        });
-    }
+    const agyBin = resolveAgyBinary();
+    onData(`[${logLabel}] Spawning agy CLI at: ${agyBin} (Model: ${model})\n`);
+    return (0, child_process_1.spawn)(agyBin, [
+        '--dangerously-skip-permissions',
+        '--model',
+        model,
+        '--print',
+        agentPrompt
+    ], {
+        cwd: repoPath,
+        env,
+        shell: process.platform === 'win32'
+    });
 }
 /**
  * Resolves the actual default branch name from GitHub when the configured one may be wrong.
@@ -317,7 +378,8 @@ async function executePlaybookWorkflow(options) {
     const { conn, repoPath, playbookPath, issueNumber, devops, token, logLabel, onChunk, onError, onDone, onFileModified, onModifiedFiles } = options;
     let child;
     try {
-        child = runPlaybookCli({
+        child = await runPlaybookCli({
+            conn,
             repoPath,
             playbookPath,
             logLabel,
@@ -330,18 +392,22 @@ async function executePlaybookWorkflow(options) {
     }
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (data) => {
-        const chunk = data.toString('utf8');
-        stdout += chunk;
-        process.stdout.write(chunk);
-        onChunk(chunk, true);
-    });
-    child.stderr.on('data', (data) => {
-        const chunk = data.toString('utf8');
-        stderr += chunk;
-        process.stderr.write(chunk);
-        onChunk(chunk, true);
-    });
+    if (child.stdout) {
+        child.stdout.on('data', (data) => {
+            const chunk = data.toString('utf8');
+            stdout += chunk;
+            process.stdout.write(chunk);
+            onChunk(chunk, true);
+        });
+    }
+    if (child.stderr) {
+        child.stderr.on('data', (data) => {
+            const chunk = data.toString('utf8');
+            stderr += chunk;
+            process.stderr.write(chunk);
+            onChunk(chunk, true);
+        });
+    }
     const timeoutId = setTimeout(() => {
         child.kill();
         onError(`${logLabel} timed out after 5 minutes.`);
