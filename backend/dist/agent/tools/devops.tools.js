@@ -33,15 +33,17 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.executePlaybookWithGeminiTool = exports.readWorkspaceFileTool = exports.writeWorkspaceFileTool = exports.auditSecurityVulnerabilitiesTool = exports.submitMrReviewTool = exports.createMergeRequestFromWorkspaceTool = exports.publishSkillToCatalogTool = exports.generateDevOpsHealthScoreTool = exports.analyzePipelineFailureTool = exports.resolveIssueWithAITool = void 0;
+exports.submitAntigravityAuthCodeTool = exports.startAntigravityAuthTool = exports.executePlaybookWithGeminiTool = exports.readWorkspaceFileTool = exports.writeWorkspaceFileTool = exports.auditSecurityVulnerabilitiesTool = exports.submitMrReviewTool = exports.createMergeRequestFromWorkspaceTool = exports.publishSkillToCatalogTool = exports.generateDevOpsHealthScoreTool = exports.analyzePipelineFailureTool = exports.resolveIssueWithAITool = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const zod_1 = require("zod");
+const child_process_1 = require("child_process");
 const adk_1 = require("@google/adk");
 const types_1 = require("./types");
 const playbook_1 = require("../../utils/playbook");
 const helpers_1 = require("../../routes/helpers");
 const agent_1 = require("../agent");
+const devops_1 = require("../../routes/devops");
 // ─────────────────────────────────────────────────────────────────────────────
 // resolve_issue_with_ai
 // ─────────────────────────────────────────────────────────────────────────────
@@ -435,6 +437,79 @@ exports.executePlaybookWithGeminiTool = new adk_1.FunctionTool({
         if (!token) {
             return 'Git token is not configured for this connection profile.';
         }
+        const hasOauth = !!devops.profile?.agy_auth_code;
+        const useVertex = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
+        const hasServiceAccount = !!process.env.GOOGLE_APPLICATION_CREDENTIALS || !!process.env.CLOUD_RUN;
+        const hasApiKey = !!(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY);
+        if (!hasOauth && !useVertex && !hasApiKey) {
+            // Not authenticated! Start the authentication flow automatically!
+            const existing = devops_1.activeAgyAuthProcesses.get(connectionName);
+            if (existing) {
+                try {
+                    existing.child.kill();
+                }
+                catch (e) { }
+                devops_1.activeAgyAuthProcesses.delete(connectionName);
+            }
+            const profileDir = (0, playbook_1.getAgyProfileDir)(connectionName);
+            const env = {
+                ...process.env,
+                USERPROFILE: profileDir,
+                HOME: profileDir,
+                APPDATA: path.join(profileDir, 'AppData', 'Roaming'),
+                LOCALAPPDATA: path.join(profileDir, 'AppData', 'Local'),
+                SSH_CLIENT: '127.0.0.1 22 22',
+                SSH_TTY: '/dev/pts/0'
+            };
+            const agyBin = (0, playbook_1.resolveAgyBinary)();
+            const child = (0, child_process_1.spawn)(agyBin, ['models'], {
+                env,
+                shell: process.platform === 'win32'
+            });
+            const state = {
+                child,
+                logBuffer: [],
+                urlSent: false
+            };
+            devops_1.activeAgyAuthProcesses.set(connectionName, state);
+            return new Promise((resolve) => {
+                let resolved = false;
+                const handleData = (data) => {
+                    const text = data.toString('utf-8');
+                    state.logBuffer.push(text);
+                    const match = text.match(/https:\/\/accounts\.google\.com\/[^\s]*/);
+                    if (match && !resolved) {
+                        resolved = true;
+                        state.urlSent = true;
+                        resolve(`⚠️ **Yêu cầu xác thực Antigravity (Antigravity Auth Required)**\n\n` +
+                            `Antigravity CLI chưa được cấu hình xác thực cho kết nối "${connectionName}".\n` +
+                            `Tôi đã tự động bắt đầu luồng đăng nhập Remote SSH OAuth cho bạn.\n\n` +
+                            `1. Vui lòng nhấp vào liên kết này để đăng nhập:\n` +
+                            `👉 ${match[0]}\n\n` +
+                            `2. Copy mã xác thực từ trình duyệt và gửi lại cho tôi bằng cú pháp:\n` +
+                            `"Mã xác thực Antigravity của tôi là: <mã code>"`);
+                    }
+                };
+                if (child.stdout)
+                    child.stdout.on('data', handleData);
+                if (child.stderr)
+                    child.stderr.on('data', handleData);
+                child.on('close', (code) => {
+                    if (!resolved) {
+                        resolved = true;
+                        devops_1.activeAgyAuthProcesses.delete(connectionName);
+                        resolve(`Antigravity CLI requires authentication, but the login flow failed to start. Process exited with code ${code}.`);
+                    }
+                });
+                setTimeout(() => {
+                    if (!resolved) {
+                        resolved = true;
+                        resolve(`Antigravity CLI requires authentication, but starting the login flow timed out.\n` +
+                            `Đầu ra hiện tại:\n${state.logBuffer.join('')}`);
+                    }
+                }, 5000);
+            });
+        }
         const sendLog = (text) => {
             const stream = agent_1.activeStreams.get(sessionId);
             if (stream)
@@ -475,4 +550,146 @@ exports.executePlaybookWithGeminiTool = new adk_1.FunctionTool({
             return `Failed to execute playbook: ${e.message}`;
         }
     }),
+});
+// ─────────────────────────────────────────────────────────────────────────────
+// start_antigravity_auth
+// ─────────────────────────────────────────────────────────────────────────────
+exports.startAntigravityAuthTool = new adk_1.FunctionTool({
+    name: 'start_antigravity_auth',
+    description: 'Starts the Antigravity CLI (agy) OAuth authentication flow for the specified connection profile. Returns the Google Sign-in URL that the user needs to visit.',
+    parameters: zod_1.z.object({
+        connectionName: zod_1.z.string().describe('The name of the connection profile to authenticate'),
+    }),
+    execute: (async ({ connectionName }) => {
+        // Kill existing process if any
+        const existing = devops_1.activeAgyAuthProcesses.get(connectionName);
+        if (existing) {
+            try {
+                existing.child.kill();
+            }
+            catch (e) { }
+            devops_1.activeAgyAuthProcesses.delete(connectionName);
+        }
+        const profileDir = (0, playbook_1.getAgyProfileDir)(connectionName);
+        const env = {
+            ...process.env,
+            USERPROFILE: profileDir,
+            HOME: profileDir,
+            APPDATA: path.join(profileDir, 'AppData', 'Roaming'),
+            LOCALAPPDATA: path.join(profileDir, 'AppData', 'Local'),
+            SSH_CLIENT: '127.0.0.1 22 22',
+            SSH_TTY: '/dev/pts/0'
+        };
+        const agyBin = (0, playbook_1.resolveAgyBinary)();
+        const child = (0, child_process_1.spawn)(agyBin, ['models'], {
+            env,
+            shell: process.platform === 'win32'
+        });
+        const state = {
+            child,
+            logBuffer: [],
+            urlSent: false
+        };
+        devops_1.activeAgyAuthProcesses.set(connectionName, state);
+        return new Promise((resolve) => {
+            let resolved = false;
+            const handleData = (data) => {
+                const text = data.toString('utf-8');
+                state.logBuffer.push(text);
+                const match = text.match(/https:\/\/accounts\.google\.com\/[^\s]*/);
+                if (match && !resolved) {
+                    resolved = true;
+                    state.urlSent = true;
+                    resolve(`🔑 **Antigravity CLI Auth Started!**\n\n` +
+                        `Please visit the following URL to authorize your account:\n` +
+                        `👉 ${match[0]}\n\n` +
+                        `After signing in, please copy the authorization code and reply to me with: "Mã xác thực Antigravity của tôi là: <mã code>".`);
+                }
+            };
+            if (child.stdout)
+                child.stdout.on('data', handleData);
+            if (child.stderr)
+                child.stderr.on('data', handleData);
+            child.on('close', (code) => {
+                if (!resolved) {
+                    resolved = true;
+                    devops_1.activeAgyAuthProcesses.delete(connectionName);
+                    resolve(`Failed to start authentication flow. Process exited with code ${code}.`);
+                }
+            });
+            setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    resolve(`Timed out waiting for authentication URL. This may happen if the connection is already authenticated or if the CLI is hanging.\n` +
+                        `Current output:\n${state.logBuffer.join('')}`);
+                }
+            }, 5000);
+        });
+    })
+});
+// ─────────────────────────────────────────────────────────────────────────────
+// submit_antigravity_auth_code
+// ─────────────────────────────────────────────────────────────────────────────
+exports.submitAntigravityAuthCodeTool = new adk_1.FunctionTool({
+    name: 'submit_antigravity_auth_code',
+    description: 'Submits the Google OAuth authorization code to the active Antigravity CLI authentication flow for the specified connection profile.',
+    parameters: zod_1.z.object({
+        connectionName: zod_1.z.string().describe('The name of the connection profile being authenticated'),
+        authCode: zod_1.z.string().describe('The authorization code copied from the Google sign-in browser page'),
+    }),
+    execute: (async ({ connectionName, authCode }) => {
+        const state = devops_1.activeAgyAuthProcesses.get(connectionName);
+        if (!state) {
+            return 'No active authentication session found for this connection. Please ask the user to start the flow first using start_antigravity_auth.';
+        }
+        if (!state.child.stdin) {
+            return 'Process stdin is not writable.';
+        }
+        return new Promise((resolve) => {
+            let resolved = false;
+            state.child.on('close', async (code) => {
+                if (resolved)
+                    return;
+                resolved = true;
+                devops_1.activeAgyAuthProcesses.delete(connectionName);
+                if (code === 0) {
+                    try {
+                        const saved = await (0, playbook_1.saveAgyCredentials)(connectionName);
+                        if (saved) {
+                            resolve(`✅ **Authentication Successful!**\nAntigravity CLI has been successfully authenticated for connection "${connectionName}" and credentials stored in DB.`);
+                        }
+                        else {
+                            resolve(`⚠️ **Authentication finished with code 0 but credentials file not found on disk.**`);
+                        }
+                    }
+                    catch (err) {
+                        resolve(`❌ Failed to save credentials: ${err.message}`);
+                    }
+                }
+                else {
+                    resolve(`❌ Authentication failed. Process exited with code ${code}.`);
+                }
+            });
+            try {
+                if (state.child.stdin) {
+                    state.child.stdin.write(authCode.trim() + '\n');
+                }
+            }
+            catch (err) {
+                resolved = true;
+                resolve(`Failed to write code to process: ${err.message}`);
+            }
+            setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    try {
+                        state.child.kill();
+                    }
+                    catch (e) { }
+                    devops_1.activeAgyAuthProcesses.delete(connectionName);
+                    resolve('Timed out waiting for authentication flow to complete.');
+                }
+            }, 10000);
+        });
+    })
 });

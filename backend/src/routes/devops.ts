@@ -12,8 +12,19 @@ import {
 } from './helpers';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawn, ChildProcess } from 'child_process';
 import { modifiedFiles } from '../agent/tools/types';
-import { runPlaybookCli, commitToGitHub, executePlaybookWorkflow, resolveGitHubDefaultBranch, resolveGitLabDefaultBranch } from '../utils/playbook';
+import { 
+  runPlaybookCli, 
+  commitToGitHub, 
+  executePlaybookWorkflow, 
+  resolveGitHubDefaultBranch, 
+  resolveGitLabDefaultBranch,
+  getAgyProfileDir,
+  restoreAgyCredentials,
+  saveAgyCredentials,
+  resolveAgyBinary
+} from '../utils/playbook';
 
 const router = express.Router();
 
@@ -783,6 +794,155 @@ router.get('/:conn/devops/run-playbook/stream', async (req, res) => {
     console.error('Run Playbook endpoint error:', error);
     sendError(error.message);
     res.end();
+  }
+});
+
+// ================= ANTIGRAVITY CLI OAUTH AUTHENTICATION =================
+
+export interface AgyAuthState {
+  child: ChildProcess;
+  logBuffer: string[];
+  urlSent: boolean;
+}
+
+export const activeAgyAuthProcesses = new Map<string, AgyAuthState>();
+
+// Start Antigravity SSH OAuth flow (SSE Stream)
+router.all('/:conn/agy/auth', async (req, res) => {
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  const { conn } = req.params;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const sendEvent = (data: any) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // Check if there is an active auth session
+  const existing = activeAgyAuthProcesses.get(conn);
+  if (existing) {
+    try {
+      existing.child.kill();
+    } catch (e) {}
+    activeAgyAuthProcesses.delete(conn);
+  }
+
+  const profileDir = getAgyProfileDir(conn);
+  const env: Record<string, string> = {
+    ...process.env,
+    USERPROFILE: profileDir,
+    HOME: profileDir,
+    APPDATA: path.join(profileDir, 'AppData', 'Roaming'),
+    LOCALAPPDATA: path.join(profileDir, 'AppData', 'Local'),
+    SSH_CLIENT: '127.0.0.1 22 22',
+    SSH_TTY: '/dev/pts/0'
+  };
+
+  const agyBin = resolveAgyBinary();
+  sendEvent({ log: `[Agy Auth] Spawning agy CLI to authenticate connection "${conn}"...\n` });
+
+  const child = spawn(agyBin, ['models'], {
+    env,
+    shell: process.platform === 'win32'
+  });
+
+  const state: AgyAuthState = {
+    child,
+    logBuffer: [],
+    urlSent: false
+  };
+
+  activeAgyAuthProcesses.set(conn, state);
+
+  const handleData = (data: Buffer) => {
+    const text = data.toString('utf-8');
+    state.logBuffer.push(text);
+    sendEvent({ log: text });
+
+    if (!state.urlSent) {
+      const match = text.match(/https:\/\/accounts\.google\.com\/[^\s]*/);
+      if (match) {
+        state.urlSent = true;
+        sendEvent({ url: match[0] });
+      }
+    }
+  };
+
+  if (child.stdout) {
+    child.stdout.on('data', handleData);
+  }
+  if (child.stderr) {
+    child.stderr.on('data', handleData);
+  }
+
+  child.on('close', async (code) => {
+    // If it was already removed, we do nothing
+    if (activeAgyAuthProcesses.get(conn) !== state) {
+      return;
+    }
+    activeAgyAuthProcesses.delete(conn);
+
+    if (code === 0) {
+      sendEvent({ log: `\n[Agy Auth] Handshake completed successfully!\n` });
+      try {
+        const saved = await saveAgyCredentials(conn);
+        if (saved) {
+          sendEvent({ log: `[Agy Auth] Saved OAuth credentials to database successfully.\n` });
+          sendEvent({ done: true, success: true });
+        } else {
+          sendEvent({ log: `[Agy Auth] Warning: Completed but oauth_creds.json not found on disk.\n` });
+          sendEvent({ done: true, success: false, error: 'Credentials file not created' });
+        }
+      } catch (err: any) {
+        sendEvent({ done: true, success: false, error: err.message });
+      }
+    } else {
+      sendEvent({ log: `\n[Agy Auth] Process exited with code ${code}.\n` });
+      sendEvent({ done: true, success: false, error: `Process exited with code ${code}` });
+    }
+    res.end();
+  });
+
+  req.on('close', () => {
+    // If client disconnected, we don't immediately kill so they can submit code
+    // but we set a timeout. If they don't submit within 2 minutes, we clean up.
+    setTimeout(() => {
+      if (activeAgyAuthProcesses.get(conn) === state) {
+        try { child.kill(); } catch (e) {}
+        activeAgyAuthProcesses.delete(conn);
+      }
+    }, 120000);
+  });
+});
+
+// Submit code endpoint
+router.post('/:conn/agy/auth/code', async (req, res) => {
+  const { conn } = req.params;
+  const { code } = req.body;
+
+  if (!code) {
+    return res.status(400).json({ error: 'Authorization code is required.' });
+  }
+
+  const state = activeAgyAuthProcesses.get(conn);
+  if (!state) {
+    return res.status(400).json({ error: 'No active authentication session found for this connection. Please restart the flow.' });
+  }
+
+  try {
+    if (state.child.stdin) {
+      state.child.stdin.write(code.trim() + '\n');
+      res.json({ success: true, msg: 'Code submitted successfully' });
+    } else {
+      res.status(500).json({ error: 'Process stdin is not writable.' });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: `Failed to write code: ${err.message}` });
   }
 });
 

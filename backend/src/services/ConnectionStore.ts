@@ -13,6 +13,7 @@ export interface GitConnectionInfo {
   name: string;
   uri: string;
   options?: any;
+  agy_auth_code?: string;
   createdAt?: string;
 }
 
@@ -47,6 +48,9 @@ export class ConnectionStore {
             createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
           )
         `);
+        try {
+          await db.exec(`ALTER TABLE connections ADD COLUMN agy_auth_code TEXT`);
+        } catch (e) {}
         return db;
       });
     }
@@ -71,6 +75,7 @@ export class ConnectionStore {
         name: row.name,
         uri: decrypt(row.uri),
         options: parsedOptions,
+        agy_auth_code: row.agy_auth_code || undefined,
         createdAt: row.createdAt
       };
     });
@@ -79,24 +84,33 @@ export class ConnectionStore {
   /**
    * Save or update a connection profile
    */
-  async saveConnection(name: string, uri: string, options: any = {}): Promise<GitConnectionInfo> {
+  async saveConnection(name: string, uri: string, options: any = {}, agyAuthCode?: string): Promise<GitConnectionInfo> {
     const db = await this.getDb();
     const encryptedUri = encrypt(uri);
     const optionsStr = typeof options === 'string' ? options : JSON.stringify(options || {});
 
     // Check if name already exists
-    const existing = await db.get('SELECT id FROM connections WHERE name = ?', name);
+    const existing = await db.get('SELECT id, agy_auth_code FROM connections WHERE name = ?', name);
     if (existing) {
-      await db.run('UPDATE connections SET uri = ?, options = ? WHERE name = ?', encryptedUri, optionsStr, name);
-      return { id: existing.id, name, uri, options };
+      const finalAuthCode = agyAuthCode !== undefined ? agyAuthCode : existing.agy_auth_code;
+      await db.run(
+        'UPDATE connections SET uri = ?, options = ?, agy_auth_code = ? WHERE name = ?',
+        encryptedUri,
+        optionsStr,
+        finalAuthCode,
+        name
+      );
+      return { id: existing.id, name, uri, options, agy_auth_code: finalAuthCode || undefined };
     } else {
+      const finalAuthCode = agyAuthCode !== undefined ? agyAuthCode : null;
       const result = await db.run(
-        'INSERT INTO connections (name, uri, options) VALUES (?, ?, ?)',
+        'INSERT INTO connections (name, uri, options, agy_auth_code) VALUES (?, ?, ?, ?)',
         name,
         encryptedUri,
-        optionsStr
+        optionsStr,
+        finalAuthCode
       );
-      return { id: result.lastID, name, uri, options };
+      return { id: result.lastID, name, uri, options, agy_auth_code: finalAuthCode || undefined };
     }
   }
 
@@ -126,6 +140,7 @@ export class ConnectionStore {
       name: row.name,
       uri: decrypt(row.uri),
       options: parsedOptions,
+      agy_auth_code: row.agy_auth_code || undefined,
       createdAt: row.createdAt
     };
   }

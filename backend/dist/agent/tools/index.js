@@ -34,5 +34,7 @@ exports.allTools = [
     devops_tools_1.auditSecurityVulnerabilitiesTool,
     devops_tools_1.writeWorkspaceFileTool,
     devops_tools_1.readWorkspaceFileTool,
-    devops_tools_1.executePlaybookWithGeminiTool
+    devops_tools_1.executePlaybookWithGeminiTool,
+    devops_tools_1.startAntigravityAuthTool,
+    devops_tools_1.submitAntigravityAuthCodeTool
 ];
