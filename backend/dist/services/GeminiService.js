@@ -77,7 +77,7 @@ class GeminiService {
     requestQueue;
     constructor() {
         const apiKey = process.env.GOOGLE_API_KEY || "";
-        const vertexai = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1';
+        const vertexai = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
         this.modelId = process.env.AGENT_MODEL || 'gemini-3.1-flash-lite';
         this.genAI = new GoogleGenAI({ vertexai, apiKey });
         // Concurrency limit of 1 request at a time, with a minimum 1.5s interval to prevent rate limit spikes

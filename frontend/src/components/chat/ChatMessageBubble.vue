@@ -5,7 +5,36 @@
   >
     <div class="bubble-avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</div>
     <div class="bubble-body">
-      <div class="bubble-text-wrapper">
+
+      <!-- Collapsible thinking block (playbook stream logs) -->
+      <div
+        v-if="msg.thinkingLogs && msg.thinkingLogs.length > 0"
+        class="thinking-block"
+        :class="{ open: msg.thinkingOpen }"
+      >
+        <button class="thinking-toggle" @click.prevent="msg.thinkingOpen = !msg.thinkingOpen">
+          <span class="thinking-icon">🧠</span>
+          <span class="thinking-label">
+            {{ store.t('Gemini CLI') }}
+            <em>({{ msg.thinkingLogs.length }} {{ store.t('steps') }})</em>
+          </span>
+          <span class="thinking-chevron">{{ msg.thinkingOpen ? '▲' : '▼' }}</span>
+        </button>
+        <div v-if="msg.thinkingOpen" ref="logsContainer" class="thinking-logs">
+          <div v-for="(log, i) in msg.thinkingLogs" :key="i" class="thinking-log-line">{{ log }}</div>
+          <!-- BaseFlow processing... animation line -->
+          <div v-if="processing" class="thinking-log-line processing-line">
+            <div class="typing-indicator small">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <span class="processing-text">{{ store.t('BaseFlow processing...') }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="msg.content && msg.content.trim() !== ''" class="bubble-text-wrapper">
         <div class="bubble-text" v-html="renderMarkdown(msg.content)"></div>
         <el-button v-if="msg.role === 'assistant'" 
           type="primary" class="speech-tts-btn"
@@ -14,6 +43,34 @@
           circle plain size="small"
           @click="$emit('speak', msg.content)">
         </el-button>
+      </div>
+
+      <!-- Modified files links block -->
+      <div
+        v-if="msg.modifiedFiles && msg.modifiedFiles.length > 0"
+        class="modified-files-block"
+      >
+        <div class="modified-files-header">
+          <span class="header-icon">🛠️</span>
+          <span class="header-label">{{ store.t('Modified Files') }}</span>
+          <span class="badge">{{ msg.modifiedFiles.length }}</span>
+        </div>
+        <div class="modified-files-list">
+          <a
+            v-for="(filePath, i) in msg.modifiedFiles"
+            :key="i"
+            :href="'file:///' + filePath"
+            class="modified-file-item-link"
+            :title="store.t('Click to inspect: ') + filePath"
+          >
+            <span class="file-icon">📄</span>
+            <div class="file-details">
+              <span class="file-path">{{ getFileName(filePath) }}</span>
+              <span class="file-dir">{{ getFileDir(filePath) }}</span>
+            </div>
+            <span class="inspect-arrow">➔</span>
+          </a>
+        </div>
       </div>
 
       <!-- Retry on error -->
@@ -27,6 +84,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref, watch, nextTick } from 'vue';
 import { store } from '../../stores';
 import { useChatRenderer } from '../../hooks/useChatRenderer';
 
@@ -34,11 +92,15 @@ interface LocalMessage {
   role: 'user' | 'assistant';
   content: string;
   isError?: boolean;
+  thinkingLogs?: string[];
+  thinkingOpen?: boolean;
+  modifiedFiles?: string[];
 }
 
-defineProps<{
+const props = defineProps<{
   msg: LocalMessage;
   idx: number;
+  processing?: boolean;
 }>();
 
 defineEmits<{
@@ -47,6 +109,33 @@ defineEmits<{
 }>();
 
 const { renderMarkdown } = useChatRenderer();
+
+const logsContainer = ref<HTMLElement | null>(null);
+
+watch(
+  [() => props.msg.thinkingLogs?.length, () => props.msg.thinkingOpen],
+  () => {
+    if (props.msg.thinkingOpen) {
+      nextTick(() => {
+        if (logsContainer.value) {
+          logsContainer.value.scrollTop = logsContainer.value.scrollHeight;
+        }
+      });
+    }
+  },
+  { immediate: true }
+);
+
+const getFileName = (pathStr: string) => {
+  const parts = pathStr.split('/');
+  return parts[parts.length - 1];
+};
+
+const getFileDir = (pathStr: string) => {
+  const parts = pathStr.split('/');
+  if (parts.length <= 1) return '';
+  return parts.slice(0, parts.length - 1).join('/') + '/';
+};
 </script>
 
 <style scoped>
@@ -251,5 +340,215 @@ const { renderMarkdown } = useChatRenderer();
 
 .retry-action-box {
   margin-top: 4px;
+}
+
+/* ── Thinking / internal logs collapsible block ── */
+.thinking-block {
+  margin-bottom: 6px;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 8px;
+  background: rgba(139, 92, 246, 0.05);
+  overflow: hidden;
+  font-size: 0.78rem;
+  max-width: 100%;
+}
+
+.thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 7px 12px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.thinking-toggle:hover {
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.thinking-icon { font-size: 0.9rem; }
+
+.thinking-label {
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.thinking-label em {
+  font-style: normal;
+  opacity: 0.6;
+  margin-left: 4px;
+}
+
+.thinking-chevron {
+  font-size: 0.65rem;
+  opacity: 0.6;
+}
+
+.thinking-logs {
+  border-top: 1px solid rgba(139, 92, 246, 0.15);
+  padding: 8px 12px;
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.thinking-log-line {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  word-break: break-all;
+  white-space: pre-wrap;
+  line-height: 1.4;
+  padding: 1px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.thinking-log-line:last-child { border-bottom: none; }
+
+/* Processing line animation in logs */
+.processing-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-primary, #8b5cf6) !important;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.typing-indicator.small {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.typing-indicator.small span {
+  width: 4px;
+  height: 4px;
+  background-color: var(--color-primary, #8b5cf6);
+  border-radius: 50%;
+  animation: bounce-logs 1.4s infinite ease-in-out both;
+}
+
+.typing-indicator.small span:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator.small span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes bounce-logs {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+
+/* ── Modified Files Block ── */
+.modified-files-block {
+  margin-top: 8px;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(99, 102, 241, 0.08));
+  overflow: hidden;
+  font-size: 0.8rem;
+  max-width: 100%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(4px);
+}
+
+.modified-files-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(139, 92, 246, 0.1);
+  border-bottom: 1px solid rgba(139, 92, 246, 0.15);
+  font-weight: 600;
+  color: var(--color-primary, #8b5cf6);
+}
+
+.modified-files-header .badge {
+  background: var(--color-primary, #8b5cf6);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 700;
+  margin-left: auto;
+}
+
+.modified-files-list {
+  padding: 6px 0;
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.modified-file-item-link {
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  gap: 10px;
+  text-decoration: none !important;
+  color: inherit !important;
+  transition: all 0.2s ease;
+  border-left: 2px solid transparent;
+}
+
+.modified-file-item-link:hover {
+  background: rgba(139, 92, 246, 0.08);
+  border-left-color: var(--color-primary, #8b5cf6);
+}
+
+.modified-file-item-link:hover .file-path {
+  color: var(--color-primary, #8b5cf6);
+}
+
+.modified-file-item-link:hover .inspect-arrow {
+  transform: translateX(4px);
+  opacity: 1;
+}
+
+.file-icon {
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.file-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.file-path {
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.82rem;
+  transition: color 0.15s ease;
+}
+
+.file-dir {
+  font-size: 0.7rem;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+
+.inspect-arrow {
+  font-size: 0.85rem;
+  color: var(--color-primary, #8b5cf6);
+  opacity: 0;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 </style>

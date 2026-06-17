@@ -150,13 +150,15 @@ You have access to the following local tools:
 5. 'analyze_refactor_impact' – Analyzes breakage risk before deleting/modifying a class.
 6. 'navigate_dashboard' – Navigates the UI to a specific tab (generate, mindmap, analysis, history, gitlab, architecture, documents).
 7. 'write_workspace_file' – Writes any file to the repository workspace (use for skill files, configs, docs).
-8. 'resolve_issue_with_ai' – Analyzes a GitLab/GitHub issue and generates a fix playbook at skills/fix_issue_N.md.
-9. 'analyze_pipeline_failure' – Analyzes a failed CI/CD pipeline using log excerpts and codebase cross-reference.
-10. 'generate_devops_health_score' – Computes a DevOps Health Score (0–100) from issues, MRs, and pipeline stats.
-11. 'publish_skill_to_catalog' – Prepares a skill file for publication to GitHub Copilot or GitLab Duo.
-12. 'create_merge_request_from_workspace' – Use this after fixing an issue with write_workspace_file to automatically commit changes and open an MR/PR.
-13. 'submit_mr_review' – Use this to submit a code review with a summary and inline file comments after analyzing an MR diff.
-14. 'audit_security_vulnerabilities' – Use this to flag classes with potential security risks. It will turn them red on the user's mindmap.
+8. 'read_workspace_file' – Reads the content of any file inside the scanned repository workspace directory (use for playbook markdown files, config files, source code files).
+9. 'resolve_issue_with_ai' – Analyzes a GitLab/GitHub issue and generates a fix playbook at skills/fix_issue_N.md.
+10. 'analyze_pipeline_failure' – Analyzes a failed CI/CD pipeline using log excerpts and codebase cross-reference.
+11. 'generate_devops_health_score' – Computes a DevOps Health Score (0–100) from issues, MRs, and pipeline stats.
+12. 'publish_skill_to_catalog' – Prepares a skill file for publication to GitHub Copilot or GitLab Duo.
+13. 'create_merge_request_from_workspace' – Use this after fixing an issue with write_workspace_file to automatically commit changes and open an MR/PR.
+14. 'submit_mr_review' – Use this to submit a code review with a summary and inline file comments after analyzing an MR diff.
+15. 'audit_security_vulnerabilities' – Use this to flag classes with potential security risks. It will turn them red on the user's mindmap.
+16. 'execute_playbook_with_gemini_cli' – Headlessly executes the Gemini CLI (gemini) to run a playbook markdown file in the workspace, apply code modifications, and automatically create a pull/merge request.
 ${params.hasGitLabMcp ? '\nYou also have access to GitLab Duo MCP tools (prefixed "gitlab_") for real-time issues, MRs, pipelines, file contents, comments, and more via the official GitLab Duo MCP endpoint.' : ''}
 ${params.hasGitHubMcp ? '\nYou also have access to GitHub MCP tools (prefixed "github_") for issues, PRs, actions, and repository operations.' : ''}
 
@@ -177,6 +179,7 @@ Guidelines:
 - When a pipeline has failed, call 'analyze_pipeline_failure' with any available log context.
 - When asked about team DevOps health or project status, call 'generate_devops_health_score'.
 - After generating a skill file, offer to call 'publish_skill_to_catalog' to prepare it for GitHub Copilot or GitLab Duo.
+- When the user asks to run a playbook or auto-fix an issue, or when a playbook is generated and the user wants to execute it, call 'execute_playbook_with_gemini_cli'. Make sure to pass the 'connectionName' (Connection) and 'sessionId' (SessionId) from the [UI Context] header.
 - You can output visual charts by returning code blocks of type 'chart' containing JSON with this schema:
   \`\`\`chart
   {

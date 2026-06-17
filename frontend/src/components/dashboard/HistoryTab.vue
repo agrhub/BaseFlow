@@ -6,13 +6,25 @@
           <h3>{{ store.t('Git Commit History') }}</h3>
           <p>{{ store.t('Browse recent commits in the repository.') }}</p>
         </div>
-        <div class="search-box">
-          <el-input
-            v-model="searchQuery"
-            :placeholder="store.t('Filter commits...')"
-            clearable
-            :prefix-icon="Search"
-            size="default"
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <div class="search-box">
+            <el-input
+              v-model="searchQuery"
+              :placeholder="store.t('Filter commits...')"
+              clearable
+              :prefix-icon="Search"
+              size="default"
+            />
+          </div>
+          <el-button
+            type="primary"
+            text
+            bg
+            circle
+            :icon="Refresh"
+            :loading="loading"
+            @click="emit('refresh')"
+            :title="store.t('Refresh')"
           />
         </div>
       </div>
@@ -46,10 +58,15 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { store } from '../../stores';
-import { Search } from '@element-plus/icons-vue';
+import { Search, Refresh } from '@element-plus/icons-vue';
 
 const props = defineProps<{
   commits: any[];
+  loading?: boolean;
+}>();
+
+const emit = defineEmits<{
+  (e: 'refresh'): void;
 }>();
 
 const searchQuery = ref('');

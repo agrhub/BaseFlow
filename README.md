@@ -24,6 +24,9 @@ BaseFlow is an advanced, interactive codebase visualization and AI-assisted soft
 
 - 📊 **DevOps Health Score**: Computes a real-time score (0–100) across open issues, MRs, and pipeline success rate. The AI agent produces a full narrative report with charts and prioritized recommendations.
 - 🤖 **AI Issue Resolver & Auto-Create MR**: Click any GitLab/GitHub issue → the agent reads it via MCP, finds relevant codebase classes, writes a structured fix playbook, and **automatically creates a Merge Request** with the fix.
+- 🛠️ **Gemini CLI Modified Files Navigator**: Renders files modified by the Gemini CLI inside assistant chat bubbles as clickable links. Clicking a file link instantly navigates to and highlights the file in the Codebase Explorer.
+- 📥 **Interactive Code Review & Diff Viewer**: Displays inline color-coded diff highlights comparing local workspace changes against Git HEAD (supporting both tracked and new untracked files) directly inside the codebase explorer view.
+- 💾 **Header Source Downloader**: Quick download button in the CodeViewer header panel to retrieve any text-based code file directly.
 - 🔍 **AI MR Code Review**: BaseFlow fetches the MR diff via GitLab MCP and posts inline AI review comments directly to GitLab with a single click.
 - 🛡️ **Codebase Security Audit**: Scans your codebase structure for vulnerabilities. Risky components are instantly highlighted in RED on the interactive mindmap with warning shields.
 - 🔍 **CI/CD Watchdog**: Click any failed pipeline → the agent fetches the job log via `gitlab_get_job_trace`, cross-references it with your codebase, highlights affected classes on the mindmap, and generates root-cause analysis.

@@ -26,6 +26,7 @@ export const useAppStore = defineStore('app', {
     catalogReadyData: null as any,
     linkedPlaybooks: {} as Record<string, string>,
     playbookToReview: null as any,
+    playbookExecutionRequest: null as { playbookFilePath: string; issueNumber: string } | null,
     classesData: [] as any[],
     devopsInfo: {
       provider: 'none',

@@ -72,13 +72,28 @@
         :healthScore="healthScore"
         :loadingHealth="loadingHealth"
         :providerLabel="providerLabel"
-        @loadHealthScore="loadHealthScore"
+        @loadHealthScore="refreshAll"
         @triggerHealthAnalysis="triggerHealthAnalysis"
         @triggerSecurityAudit="triggerSecurityAudit"
         @reviewPlaybook="reviewPlaybook"
       />
 
       <!-- Sub Tabs -->
+      <div class="tabs-container">
+        <!-- <el-button
+          class="tabs-refresh-btn"
+          type="primary"
+          text
+          bg
+          round
+          size="small"
+          :icon="Refresh"
+          :loading="loadingActiveList"
+          @click="refreshActiveList"
+        >
+          {{ store.t('Refresh') }}
+        </el-button> -->
+
       <el-tabs v-model="activeTab" class="devops-sub-tabs">
         <!-- ISSUES SUBTAB -->
         <el-tab-pane name="issues">
@@ -87,6 +102,7 @@
           </template>
 
           <DevOpsIssuesList
+              ref="issuesListRef"
             :provider="info.provider"
             @update-total="val => issuesTotal = val"
             @triage="triageIssue"
@@ -102,6 +118,7 @@
           </template>
 
           <DevOpsMrsList
+              ref="mrsListRef"
             :provider="info.provider"
             @update-total="val => mrsTotal = val"
             @reviewMergeRequest="reviewMergeRequest"
@@ -116,6 +133,7 @@
           </template>
 
           <DevOpsPipelinesList
+              ref="pipelinesListRef"
             :provider="info.provider"
             @update-total="val => pipelinesTotal = val"
             @analyzePipeline="analyzePipeline"
@@ -123,6 +141,7 @@
           />
         </el-tab-pane>
       </el-tabs>
+      </div>
 
       <!-- Update credentials button -->
       <div class="settings-reset-row mt-4">
@@ -176,6 +195,40 @@ const tokenForm = reactive({
 const issuesTotal = ref(0);
 const mrsTotal = ref(0);
 const pipelinesTotal = ref(0);
+
+const issuesListRef = ref<any>(null);
+const mrsListRef = ref<any>(null);
+const pipelinesListRef = ref<any>(null);
+
+// const loadingActiveList = computed(() => {
+//   if (activeTab.value === 'issues') return issuesListRef.value?.loadingIssues || false;
+//   if (activeTab.value === 'mrs') return mrsListRef.value?.loadingMrs || false;
+//   if (activeTab.value === 'pipelines') return pipelinesListRef.value?.loadingPipelines || false;
+//   return false;
+// });
+
+// const refreshActiveList = () => {
+//   if (activeTab.value === 'issues' && issuesListRef.value) {
+//     issuesListRef.value.fetchIssues();
+//   } else if (activeTab.value === 'mrs' && mrsListRef.value) {
+//     mrsListRef.value.fetchMrs();
+//   } else if (activeTab.value === 'pipelines' && pipelinesListRef.value) {
+//     pipelinesListRef.value.fetchPipelines();
+//   }
+// };
+
+const refreshAll = () => {
+  loadHealthScore();
+  if (issuesListRef.value) {
+    issuesListRef.value.fetchIssues();
+  }
+  if (mrsListRef.value) {
+    mrsListRef.value.fetchMrs();
+  }
+  if (pipelinesListRef.value) {
+    pipelinesListRef.value.fetchPipelines();
+  }
+};
 
 const formatCount = (count: number) => {
   if (count >= 1000) {
@@ -530,5 +583,14 @@ onMounted(() => {
 .py-5 { padding-top: 32px; padding-bottom: 32px; }
 .text-center { text-align: center; }
 
+.tabs-container {
+  position: relative;
+}
 
+.tabs-refresh-btn {
+  position: absolute;
+  right: 0;
+  top: 4px;
+  z-index: 10;
+}
 </style>

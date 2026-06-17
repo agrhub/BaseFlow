@@ -16,6 +16,7 @@ import chatRouter from './routes/chat';
 import devopsRouter from './routes/devops';
 import diagramsRouter from './routes/diagrams';
 import documentsRouter from './routes/documents';
+import { ensureGeminiCliPatched } from './utils/cliInstaller';
 
 // TypeScript session field extension
 declare module 'express-session' {
@@ -107,6 +108,8 @@ if (frontendDist) {
 } else {
   console.warn('Frontend static assets folder not found. Serving API endpoints only.');
 }
+
+ensureGeminiCliPatched();
 
 // Start Express Server
 app.listen(PORT, () => {

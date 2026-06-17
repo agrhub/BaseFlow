@@ -202,9 +202,48 @@ function parseTypeScriptFile(filePath: string, relativePath: string, content: st
   }
 }
 
+const RESERVED_KEYWORDS = new Set([
+  // Control flow & keywords
+  'for', 'if', 'else', 'elif', 'while', 'do', 'switch', 'case', 'break', 'continue', 'return', 'yield',
+  'try', 'catch', 'finally', 'throw', 'throws', 'default', 'goto', 'fn', 'func', 'function',
+  // Declarations & OOP
+  'class', 'interface', 'enum', 'struct', 'trait', 'impl', 'type', 'var', 'let', 'const',
+  'public', 'private', 'protected', 'internal', 'abstract', 'static', 'final', 'volatile',
+  'transient', 'synchronized', 'native', 'strictfp', 'virtual', 'override', 'sealed', 'partial',
+  'pub', 'mut', 'ref', 'self', 'Self', 'using', 'namespace', 'package', 'import', 'from', 'as',
+  'extends', 'implements', 'new', 'delete', 'this', 'super', 'operator', 'friend', 'template',
+  'inline', 'extern', 'union', 'select', 'defer', 'go', 'map', 'chan', 'range', 'fallthrough',
+  'and', 'or', 'not', 'xor', 'is', 'in', 'lambda', 'del', 'pass', 'with', 'assert', 'raise',
+  'global', 'nonlocal', 'crate', 'dyn', 'loop', 'match', 'mod', 'move', 'use', 'where',
+  // Types & Builtins
+  'void', 'int', 'float', 'double', 'char', 'bool', 'boolean', 'byte', 'short', 'long',
+  'string', 'any', 'none', 'null', 'true', 'false', 'object', 'undefined', 'nil'
+]);
+
+function stripComments(content: string, ext: string): string {
+  if (ext === '.py') {
+    let clean = content.replace(/#.*$/gm, '');
+    clean = clean.replace(/"""[\s\S]*?"""/g, (match) => match.replace(/[^\n]/g, ''));
+    clean = clean.replace(/'''[\s\S]*?'''/g, (match) => match.replace(/[^\n]/g, ''));
+    return clean;
+  }
+  
+  if (['.java', '.cs', '.go', '.rs', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.c', '.php'].includes(ext)) {
+    let clean = content.replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\n]/g, ''));
+    clean = clean.replace(/\/\/.*$/gm, '');
+    if (ext === '.php') {
+      clean = clean.replace(/#.*$/gm, '');
+    }
+    return clean;
+  }
+  
+  return content;
+}
+
 function parseRegexFile(filePath: string, relativePath: string, content: string, ext: string, classes: ParsedClass[]) {
   try {
     const initialLen = classes.length;
+    content = stripComments(content, ext);
     const lines = content.split('\n');
     let currentClass: ParsedClass | null = null;
     const dependencies = new Set<string>();
@@ -213,13 +252,15 @@ function parseRegexFile(filePath: string, relativePath: string, content: string,
       for (const line of lines) {
         const classMatch = line.match(/^\s*class\s+(\w+)(?:\s*\(([^)]+)\))?\s*:/);
         if (classMatch) {
+          const className = classMatch[1];
+          if (RESERVED_KEYWORDS.has(className)) continue;
+
           if (currentClass) {
             currentClass.dependencies = Array.from(dependencies).filter(d => d !== currentClass!.name);
             classes.push(currentClass);
             dependencies.clear();
           }
 
-          const className = classMatch[1];
           const parents = classMatch[2] ? classMatch[2].split(',').map(s => s.trim()) : [];
           const baseClass = parents[0];
           parents.forEach(p => dependencies.add(p));
@@ -273,8 +314,8 @@ function parseRegexFile(filePath: string, relativePath: string, content: string,
       let inClass = false;
 
       for (const line of lines) {
-        // Strip comments
-        const cleanLine = line.replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '').trim();
+        // Strip single line comments (multiline comments already stripped by stripComments)
+        const cleanLine = line.replace(/\/\/.*$/, '').trim();
         if (!cleanLine) continue;
 
         // Track imports and usings globally
@@ -298,7 +339,7 @@ function parseRegexFile(filePath: string, relativePath: string, content: string,
         const classMatch = cleanLine.match(/(?:public|private|protected|internal|abstract|static|\s)*(?:class|interface|enum)\s+(\w+)(?:\s*:\s*([\w\s,]+))?(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w\s,]+))?/);
         if (classMatch && !cleanLine.includes(';')) {
           const className = classMatch[1];
-          if (className === 'Program' || className === 'Main') continue;
+          if (className === 'Program' || className === 'Main' || RESERVED_KEYWORDS.has(className)) continue;
 
           if (currentClass) {
             currentClass.dependencies = Array.from(dependencies).filter(d => d !== currentClass!.name);
@@ -429,6 +470,7 @@ function parseRegexFile(filePath: string, relativePath: string, content: string,
       
       while ((match = structRegex.exec(content)) !== null) {
         const name = match[1];
+        if (RESERVED_KEYWORDS.has(name)) continue;
         fileClasses[name] = {
           name,
           filePath: relativePath,
@@ -539,6 +581,7 @@ function parseRegexFile(filePath: string, relativePath: string, content: string,
 
       while ((match = typeRegex.exec(content)) !== null) {
         const name = match[1];
+        if (RESERVED_KEYWORDS.has(name)) continue;
         fileClasses[name] = {
           name,
           filePath: relativePath,
@@ -618,7 +661,7 @@ function parseRegexFile(filePath: string, relativePath: string, content: string,
       let match;
       while ((match = classRegex.exec(content)) !== null) {
         const name = match[1];
-        if (name === 'std' || name === 'string' || name === 'vector') continue;
+        if (name === 'std' || name === 'string' || name === 'vector' || RESERVED_KEYWORDS.has(name)) continue;
         const baseClass = match[2];
         
         const fileClass: ParsedClass = {
@@ -700,6 +743,7 @@ function parseRegexFile(filePath: string, relativePath: string, content: string,
       let match;
       while ((match = classRegex.exec(content)) !== null) {
         const name = match[1];
+        if (RESERVED_KEYWORDS.has(name)) continue;
         const baseClass = match[2];
         const implementsList = match[3] ? match[3].split(',').map(s => s.trim()) : [];
         
@@ -780,7 +824,7 @@ function parseRegexFile(filePath: string, relativePath: string, content: string,
   }
 }
 
-function generateGraphLayout(classes: ParsedClass[]) {
+export function generateGraphLayout(classes: ParsedClass[]) {
   const classNames = new Set(classes.map(c => c.name));
   
   const levels: { [className: string]: number } = {};
@@ -948,4 +992,17 @@ export function parseRepository(repoPath: string): ParseResult {
     nodes,
     edges
   };
+}
+
+export function parseSingleFile(filePath: string, relativePath: string, content: string, classes: ParsedClass[] = []): ParsedClass[] {
+  const ext = path.extname(filePath).toLowerCase();
+  if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
+    parseTypeScriptFile(filePath, relativePath, content, classes);
+  } else if (ext === '.vue') {
+    const scriptContent = getVueScriptContent(content);
+    parseTypeScriptFile(filePath, relativePath, scriptContent || content, classes);
+  } else {
+    parseRegexFile(filePath, relativePath, content, ext, classes);
+  }
+  return classes;
 }

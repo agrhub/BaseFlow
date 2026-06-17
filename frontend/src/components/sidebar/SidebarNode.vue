@@ -37,7 +37,7 @@
         :key="clsName"
         class="node-row coll-row"
         :class="{ 'is-active': store.activeFolder === (node.path || 'root') && store.activeItem === clsName }"
-        :style="{ paddingLeft: `${(depth + 1) * 12 + 12}px` }"
+        :style="{ paddingLeft: `${(depth + 1) * 12 + 12 + 20}px` }"
         @click="goToClassDetails(node.path || 'root', clsName)"
       >
         <el-icon class="node-icon">

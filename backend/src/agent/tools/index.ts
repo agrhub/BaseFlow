@@ -15,7 +15,9 @@ import {
   createMergeRequestFromWorkspaceTool,
   submitMrReviewTool,
   auditSecurityVulnerabilitiesTool,
-  writeWorkspaceFileTool
+  writeWorkspaceFileTool,
+  readWorkspaceFileTool,
+  executePlaybookWithGeminiTool
 } from './devops.tools';
 
 export * from './types';
@@ -34,5 +36,7 @@ export const allTools: FunctionTool[] = [
   createMergeRequestFromWorkspaceTool,
   submitMrReviewTool,
   auditSecurityVulnerabilitiesTool,
-  writeWorkspaceFileTool
+  writeWorkspaceFileTool,
+  readWorkspaceFileTool,
+  executePlaybookWithGeminiTool
 ];
