@@ -2,25 +2,45 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { z } from 'zod';
 import { FunctionTool } from '@google/adk';
-import { currentScanResult, setCurrentScanResult, pendingActions, modifiedFiles } from './types';
+import { currentScanResult, pendingActions, modifiedFiles } from './types';
+import { executePlaybookWorkflow } from '../../utils/playbook';
+import { getDevOpsInfo } from '../../routes/helpers';
+import { activeStreams } from '../agent';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// resolve_issue_with_ai
+// ─────────────────────────────────────────────────────────────────────────────
 export const resolveIssueWithAITool = new FunctionTool({
   name: 'resolve_issue_with_ai',
-  description: 'Analyzes a GitLab or GitHub issue and generates a detailed step-by-step fix playbook as a skill markdown file in the repository workspace. Optionally prepares a comment to post back on the issue.',
+  description:
+    'Analyzes a GitLab or GitHub issue and generates a detailed step-by-step fix playbook as a skill markdown file in the repository workspace.',
   parameters: z.object({
     issueTitle: z.string().describe('Title of the issue'),
     issueDescription: z.string().describe('Full description / body of the issue'),
     issueNumber: z.string().describe('Issue number or IID, e.g. "42"'),
-    provider: z.enum(['gitlab', 'github']).describe('The VCS provider')
+    provider: z.enum(['gitlab', 'github']).describe('The VCS provider'),
   }) as any,
   execute: (async ({ issueTitle, issueDescription, issueNumber, provider }: any) => {
-    if (!currentScanResult) return 'No repository is scanned. Ask the user to scan a connection first.';
+    if (!currentScanResult) {
+      return 'No repository is scanned. Ask the user to scan a connection first.';
+    }
+
     // Find potentially relevant classes based on issue keywords
-    const keywords = (issueTitle + ' ' + issueDescription).toLowerCase().split(/\W+/).filter(w => w.length > 3);
+    const keywords = (issueTitle + ' ' + issueDescription)
+      .toLowerCase()
+      .split(/\W+/)
+      .filter((w) => w.length > 3);
+
     const relevantClasses = currentScanResult.classes
-      .filter(c => keywords.some(kw => c.name.toLowerCase().includes(kw) || (c.filePath && c.filePath.toLowerCase().includes(kw))))
+      .filter((c) =>
+        keywords.some(
+          (kw) =>
+            c.name.toLowerCase().includes(kw) ||
+            (c.filePath && c.filePath.toLowerCase().includes(kw)),
+        ),
+      )
       .slice(0, 6)
-      .map(c => c.name);
+      .map((c) => c.name);
 
     const skillContent = [
       `# 🤖 AI Fix Playbook – Issue #${issueNumber}: ${issueTitle}`,
@@ -34,7 +54,7 @@ export const resolveIssueWithAITool = new FunctionTool({
       ``,
       `## 🔍 Relevant Codebase Components`,
       relevantClasses.length > 0
-        ? relevantClasses.map(c => `- \`${c}\``).join('\n')
+        ? relevantClasses.map((c) => `- \`${c}\``).join('\n')
         : '_No directly matching classes found. Perform a broader search._',
       ``,
       `## 🛠️ Fix Instructions`,
@@ -51,47 +71,56 @@ export const resolveIssueWithAITool = new FunctionTool({
     ].join('\n');
 
     const filePath = `skills/fix_issue_${issueNumber}.md`;
-    const fullPath = require('path').join(currentScanResult.repoPath, filePath);
-    const fs = require('fs');
-    const parentDir = require('path').dirname(fullPath);
-    if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
+    const fullPath = path.join(currentScanResult.repoPath, filePath);
+    const parentDir = path.dirname(fullPath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
     fs.writeFileSync(fullPath, skillContent, 'utf-8');
 
     pendingActions.push({
-      type: 'SKILL_CREATED',
-      payload: { filePath, issueNumber, issueTitle, provider }
+      type: 'PLAYBOOK_CREATED',
+      payload: { filePath, issueNumber, issueTitle, provider },
     });
 
-    return `✅ AI Fix Playbook created at \`${filePath}\`.\n\nRelevant components identified: ${relevantClasses.join(', ') || 'none matched'}.\n\nYou can now review the playbook in the Documents tab or publish it to the GitLab AI Catalog.`;
-  }) as any
+    return (
+      `✅ AI Fix Playbook created at \`${filePath}\`.\n\n` +
+      `Relevant components identified: ${relevantClasses.join(', ') || 'none matched'}.\n\n` +
+      `You can now review the playbook in the Documents tab or publish it to the GitLab AI Catalog.`
+    );
+  }) as any,
 } as any);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// analyze_pipeline_failure
+// ─────────────────────────────────────────────────────────────────────────────
 export const analyzePipelineFailureTool = new FunctionTool({
   name: 'analyze_pipeline_failure',
-  description: 'Analyzes a failed CI/CD pipeline or workflow run. Reads the failure context, cross-references relevant codebase components, and generates a root-cause analysis with actionable fix suggestions.',
+  description:
+    'Analyzes a failed CI/CD pipeline or workflow run. Reads the failure context, cross-references relevant codebase components, and generates a root-cause analysis with actionable fix suggestions.',
   parameters: z.object({
     pipelineId: z.string().describe('The pipeline ID or run number'),
     ref: z.string().describe('The branch or ref that failed'),
     provider: z.enum(['gitlab', 'github']).describe('The VCS provider'),
-    jobLog: z.string().optional().describe('Optional: raw job log output or error snippet to analyze')
+    jobLog: z.string().optional().describe('Optional: raw job log output or error snippet to analyze'),
   }) as any,
   execute: (async ({ pipelineId, ref, provider, jobLog }: any) => {
     if (!currentScanResult) return 'No repository is scanned.';
 
     const logSnippet = jobLog
-      ? jobLog.slice(-3000) // Use last 3000 chars of log
+      ? jobLog.slice(-3000)
       : `No log provided for pipeline #${pipelineId} on ref "${ref}".`;
 
     // Heuristically find file references in the log
     const fileMatches = [...(logSnippet.matchAll(/([\w/\-.]+\.(ts|js|py|java|cs|vue))/g))]
-      .map(m => m[1])
+      .map((m) => m[1])
       .filter((v, i, a) => a.indexOf(v) === i)
       .slice(0, 8);
 
     const relatedClasses = currentScanResult.classes
-      .filter(c => fileMatches.some(f => c.filePath && c.filePath.includes(f.replace(/.*\//, ''))))
+      .filter((c) => fileMatches.some((f) => c.filePath && c.filePath.includes(f.replace(/.*\//, ''))))
       .slice(0, 5)
-      .map(c => c.name);
+      .map((c) => c.name);
 
     const analysis = [
       `## 🔴 Pipeline Failure Analysis – #${pipelineId} (${ref})`,
@@ -105,10 +134,10 @@ export const analyzePipelineFailureTool = new FunctionTool({
       '```',
       ``,
       `### 🔍 Files Referenced in Failure`,
-      fileMatches.length > 0 ? fileMatches.map(f => `- \`${f}\``).join('\n') : '_No file references detected in log._',
+      fileMatches.length > 0 ? fileMatches.map((f) => `- \`${f}\``).join('\n') : '_No file references detected in log._',
       ``,
       `### 🧩 Related Codebase Classes`,
-      relatedClasses.length > 0 ? relatedClasses.map(c => `- \`${c}\``).join('\n') : '_No matching classes found._',
+      relatedClasses.length > 0 ? relatedClasses.map((c) => `- \`${c}\``).join('\n') : '_No matching classes found._',
       ``,
       `### 💡 Recommended Actions`,
       `1. Open the files referenced above in the mindmap and run the class inspector.`,
@@ -120,25 +149,28 @@ export const analyzePipelineFailureTool = new FunctionTool({
     if (relatedClasses.length > 0) {
       pendingActions.push({
         type: 'HIGHLIGHT_CLASS',
-        payload: { className: relatedClasses[0] }
+        payload: { className: relatedClasses[0] },
       });
     }
 
     return analysis;
-  }) as any
+  }) as any,
 } as any);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// generate_devops_health_score
+// ─────────────────────────────────────────────────────────────────────────────
 export const generateDevOpsHealthScoreTool = new FunctionTool({
   name: 'generate_devops_health_score',
-  description: 'Analyzes DevOps metrics (open issues count, failed pipelines, MR age) and generates a DevOps Health Score (0-100) with a narrative summary and actionable recommendations.',
+  description:
+    'Analyzes DevOps metrics (open issues count, failed pipelines, MR age) and generates a DevOps Health Score (0-100) with a narrative summary and actionable recommendations.',
   parameters: z.object({
     openIssues: z.number().describe('Number of open issues'),
     openMRs: z.number().describe('Number of open merge/pull requests'),
-    recentPipelines: z.array(z.object({
-      status: z.string(),
-      ref: z.string()
-    })).describe('Array of recent pipeline/run statuses'),
-    provider: z.enum(['gitlab', 'github', 'both']).describe('The VCS provider(s) in use')
+    recentPipelines: z
+      .array(z.object({ status: z.string(), ref: z.string() }))
+      .describe('Array of recent pipeline/run statuses'),
+    provider: z.enum(['gitlab', 'github', 'both']).describe('The VCS provider(s) in use'),
   }) as any,
   execute: (async ({ openIssues, openMRs, recentPipelines, provider }: any) => {
     const pipelines = Array.isArray(recentPipelines) ? recentPipelines : [];
@@ -150,10 +182,16 @@ export const generateDevOpsHealthScoreTool = new FunctionTool({
     const issueScore = Math.max(0, 100 - openIssues * 3);
     const mrScore = Math.max(0, 100 - openMRs * 5);
     const pipelineScore = pipelineHealthRate;
+    const overallScore = Math.round(issueScore * 0.3 + mrScore * 0.3 + pipelineScore * 0.4);
 
-    const overallScore = Math.round((issueScore * 0.3 + mrScore * 0.3 + pipelineScore * 0.4));
-
-    const grade = overallScore >= 85 ? '🟢 Excellent' : overallScore >= 65 ? '🟡 Good' : overallScore >= 40 ? '🟠 Needs Attention' : '🔴 Critical';
+    const grade =
+      overallScore >= 85
+        ? '🟢 Excellent'
+        : overallScore >= 65
+          ? '🟡 Good'
+          : overallScore >= 40
+            ? '🟠 Needs Attention'
+            : '🔴 Critical';
 
     const summary = [
       `## 📊 DevOps Health Score: **${overallScore}/100** ${grade}`,
@@ -165,40 +203,45 @@ export const generateDevOpsHealthScoreTool = new FunctionTool({
       `| Pipeline Success Rate | ${Math.round(pipelineHealthRate)}% (${successfulPipelines}/${totalPipelines}) | ${Math.round(pipelineScore)}/100 |`,
       ``,
       `### 💡 Recommendations`,
-      openIssues > 10 ? `- ⚠️ High issue backlog (${openIssues} open). Prioritize triage with the AI Issue Resolver.` : `- ✅ Issue backlog is healthy.`,
-      openMRs > 5 ? `- ⚠️ ${openMRs} open MRs may indicate review bottleneck. Consider pair-review sessions.` : `- ✅ MR throughput looks good.`,
-      failedPipelines > 0 ? `- 🔴 ${failedPipelines} recent pipeline failure(s). Use the CI/CD Watchdog to analyze root causes.` : `- ✅ Recent pipelines are healthy.`,
+      openIssues > 10
+        ? `- ⚠️ High issue backlog (${openIssues} open). Prioritize triage with the AI Issue Resolver.`
+        : `- ✅ Issue backlog is healthy.`,
+      openMRs > 5
+        ? `- ⚠️ ${openMRs} open MRs may indicate review bottleneck. Consider pair-review sessions.`
+        : `- ✅ MR throughput looks good.`,
+      failedPipelines > 0
+        ? `- 🔴 ${failedPipelines} recent pipeline failure(s). Use the CI/CD Watchdog to analyze root causes.`
+        : `- ✅ Recent pipelines are healthy.`,
       ``,
       `> Powered by BaseFlow AI Architect Agent via ${provider === 'both' ? 'GitLab Duo + GitHub' : provider === 'gitlab' ? 'GitLab Duo' : 'GitHub'} MCP.`,
     ].join('\n');
 
     return summary;
-  }) as any
+  }) as any,
 } as any);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// publish_skill_to_catalog
+// ─────────────────────────────────────────────────────────────────────────────
 export const publishSkillToCatalogTool = new FunctionTool({
   name: 'publish_skill_to_catalog',
-  description: 'Prepares a generated skill/playbook file for publication to the AI Catalog (GitLab Duo or GitHub Copilot). Returns the formatted content and a deep-link URL.',
+  description:
+    'Prepares a generated skill/playbook file for publication to the AI Catalog (GitLab Duo or GitHub Copilot). Returns the formatted content and a deep-link URL.',
   parameters: z.object({
     skillFilePath: z.string().describe('Relative path of the skill file in the workspace (e.g. "skills/fix_issue_42.md")'),
     agentName: z.string().optional().describe('Name for the custom agent, defaults to the skill file name'),
     provider: z.enum(['github', 'gitlab']).optional().describe('The AI provider (github or gitlab)'),
-    catalogUrl: z.string().optional().describe('The deep-link URL to the catalog settings page')
+    catalogUrl: z.string().optional().describe('The deep-link URL to the catalog settings page'),
   }) as any,
   execute: (async ({ skillFilePath, agentName, provider = 'gitlab', catalogUrl }: any) => {
     if (!currentScanResult) return 'No active repository. Please scan a connection first.';
 
-    const fs = require('fs');
-    const path = require('path');
     const fullPath = path.join(currentScanResult.repoPath, skillFilePath);
-
-    let skillContent = '';
-    if (fs.existsSync(fullPath)) {
-      skillContent = fs.readFileSync(fullPath, 'utf-8');
-    } else {
+    if (!fs.existsSync(fullPath)) {
       return `Skill file not found at ${skillFilePath}. Please generate it first using 'resolve_issue_with_ai'.`;
     }
 
+    const skillContent = fs.readFileSync(fullPath, 'utf-8');
     const resolvedAgentName = agentName || path.basename(skillFilePath, '.md').replace(/_/g, ' ');
 
     const isGitHub = provider === 'github';
@@ -218,84 +261,120 @@ export const publishSkillToCatalogTool = new FunctionTool({
       skillContent,
       ``,
       `## Instructions for ${targetName}`,
-      isGitHub ? `1. Go to your GitHub organization or account settings → Copilot → Copilot Extensions.` : `1. Go to your GitLab group → Settings → GitLab Duo → Custom and external agents and flows.`,
+      isGitHub
+        ? `1. Go to your GitHub organization or account settings → Copilot → Copilot Extensions.`
+        : `1. Go to your GitLab group → Settings → GitLab Duo → Custom and external agents and flows.`,
       `2. Click "New custom agent" or "Add Extension".`,
       `3. Paste the System Prompt above.`,
       `4. Name the agent: **${resolvedAgentName}**`,
       `5. Save and activate the agent.`,
     ].join('\n');
 
-    const finalCatalogUrl = catalogUrl || (isGitHub ? 'https://github.com/settings/copilot' : 'https://gitlab.com/-/user_settings/custom_models');
+    const finalCatalogUrl =
+      catalogUrl || (isGitHub ? 'https://github.com/settings/copilot' : 'https://gitlab.com/-/user_settings/custom_models');
 
     pendingActions.push({
       type: 'CATALOG_READY',
-      payload: { agentName: resolvedAgentName, catalogUrl: finalCatalogUrl, skillFilePath }
+      payload: { agentName: resolvedAgentName, catalogUrl: finalCatalogUrl, skillFilePath },
     });
 
-    return `## ✅ Skill Ready for ${targetName}\n\n**Agent Name:** ${resolvedAgentName}\n\n**Next Step:** [Open Settings](${finalCatalogUrl})\n\nThe system prompt has been prepared from \`${skillFilePath}\`. Copy the content above and paste it into your custom agent configuration.`;
-  }) as any
+    return (
+      `## ✅ Skill Ready for ${targetName}\n\n` +
+      `**Agent Name:** ${resolvedAgentName}\n\n` +
+      `**Next Step:** [Open Settings](${finalCatalogUrl})\n\n` +
+      `The system prompt has been prepared from \`${skillFilePath}\`. Copy the content above and paste it into your custom agent configuration.`
+    );
+  }) as any,
 } as any);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// create_merge_request_from_workspace
+// ─────────────────────────────────────────────────────────────────────────────
 export const createMergeRequestFromWorkspaceTool = new FunctionTool({
   name: 'create_merge_request_from_workspace',
-  description: 'Creates a Merge Request or Pull Request using the files currently modified in the workspace. Call this tool after you have successfully used write_workspace_file to fix an issue.',
+  description:
+    'Creates a Merge Request or Pull Request using the files currently modified in the workspace. Call this tool after you have successfully used write_workspace_file to fix an issue.',
   parameters: z.object({
     issueIid: z.string().describe('The ID of the issue being fixed'),
     branchName: z.string().describe('Name of the new branch to create (e.g. fix/issue-123)'),
     mrTitle: z.string().describe('Title of the merge request'),
-    mrDescription: z.string().describe('Description of the merge request')
+    mrDescription: z.string().describe('Description of the merge request'),
   }) as any,
   execute: (async ({ issueIid, branchName, mrTitle, mrDescription }: any) => {
     pendingActions.push({
       type: 'AUTO_CREATE_MR',
-      payload: { issueIid, branchName, mrTitle, mrDescription }
+      payload: { issueIid, branchName, mrTitle, mrDescription },
     });
-    return `Merge request creation process initiated. I have signaled the backend to commit the workspace changes to branch '${branchName}' and create MR '${mrTitle}'.`;
-  }) as any
+    return (
+      `Merge request creation process initiated. ` +
+      `I have signaled the backend to commit the workspace changes to branch '${branchName}' and create MR '${mrTitle}'.`
+    );
+  }) as any,
 } as any);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// submit_mr_review
+// ─────────────────────────────────────────────────────────────────────────────
 export const submitMrReviewTool = new FunctionTool({
   name: 'submit_mr_review',
-  description: 'Submits a code review for a Merge Request/Pull Request with inline comments. Call this after analyzing a provided MR diff.',
+  description:
+    'Submits a code review for a Merge Request/Pull Request with inline comments. Call this after analyzing a provided MR diff.',
   parameters: z.object({
     mrIid: z.string().describe('The ID of the Merge Request being reviewed'),
     summary: z.string().describe('A general summary of the code review'),
-    comments: z.array(z.object({
-      filePath: z.string().describe('The path of the file being commented on'),
-      comment: z.string().describe('The inline comment text')
-    })).describe('Array of inline comments for specific files')
+    comments: z
+      .array(
+        z.object({
+          filePath: z.string().describe('The path of the file being commented on'),
+          comment: z.string().describe('The inline comment text'),
+        }),
+      )
+      .describe('Array of inline comments for specific files'),
   }) as any,
   execute: (async ({ mrIid, summary, comments }: any) => {
     pendingActions.push({
       type: 'SUBMIT_MR_REVIEW',
-      payload: { mrIid, summary, comments }
+      payload: { mrIid, summary, comments },
     });
-    return `Code review submission initiated. I have signaled the backend to post the review summary and ${comments.length} inline comments to the Merge Request.`;
-  }) as any
+    return (
+      `Code review submission initiated. ` +
+      `I have signaled the backend to post the review summary and ${comments.length} inline comments to the Merge Request.`
+    );
+  }) as any,
 } as any);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// audit_security_vulnerabilities
+// ─────────────────────────────────────────────────────────────────────────────
 export const auditSecurityVulnerabilitiesTool = new FunctionTool({
   name: 'audit_security_vulnerabilities',
-  description: 'Audits the codebase for potential security vulnerabilities and explicitly highlights the vulnerable classes/files on the mindmap with a red warning.',
+  description:
+    'Audits the codebase for potential security vulnerabilities and explicitly highlights the vulnerable classes/files on the mindmap with a red warning.',
   parameters: z.object({
-    vulnerableClasses: z.array(z.string()).describe('An array of class names or file names that contain security vulnerabilities'),
-    summary: z.string().describe('A summary of the security audit findings')
+    vulnerableClasses: z
+      .array(z.string())
+      .describe('An array of class names or file names that contain security vulnerabilities'),
+    summary: z.string().describe('A summary of the security audit findings'),
   }) as any,
   execute: (async ({ vulnerableClasses, summary }: any) => {
     pendingActions.push({
       type: 'HIGHLIGHT_VULNERABILITY',
-      payload: { classes: vulnerableClasses, summary }
+      payload: { classes: vulnerableClasses, summary },
     });
     return `Security audit completed. Highlighted ${vulnerableClasses.length} vulnerable classes on the mindmap.`;
-  }) as any
+  }) as any,
 } as any);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// write_workspace_file
+// ─────────────────────────────────────────────────────────────────────────────
 export const writeWorkspaceFileTool = new FunctionTool({
   name: 'write_workspace_file',
-  description: 'Writes a file (like a skill markdown file or a code fix) to the scanned repository workspace directory. Use this to create skill markdown files at skills/name.md to run on AI agents like Antigravity.',
+  description:
+    'Writes a file (like a skill markdown file or a code fix) to the scanned repository workspace directory.',
   parameters: z.object({
     filePath: z.string().describe('Relative file path inside the repository workspace (e.g. "skills/fix_issue.md")'),
-    content: z.string().describe('Full content of the file to write')
+    content: z.string().describe('Full content of the file to write'),
   }) as any,
   execute: (async ({ filePath, content }: any) => {
     if (!currentScanResult) {
@@ -309,15 +388,119 @@ export const writeWorkspaceFileTool = new FunctionTool({
       }
       fs.writeFileSync(fullPath, content, 'utf-8');
       modifiedFiles.add(filePath);
-      
+
       pendingActions.push({
         type: 'PLAYBOOK_CREATED',
-        payload: { filePath }
+        payload: { filePath },
       });
-      
+
       return `Successfully wrote file to workspace at ${filePath}.`;
     } catch (e: any) {
       return `Failed to write file: ${e.message}`;
     }
-  }) as any
+  }) as any,
+} as any);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// read_workspace_file
+// ─────────────────────────────────────────────────────────────────────────────
+export const readWorkspaceFileTool = new FunctionTool({
+  name: 'read_workspace_file',
+  description:
+    'Reads the content of any file inside the scanned repository workspace directory (e.g. "skills/fix_issue_42.md" or source code files).',
+  parameters: z.object({
+    filePath: z.string().describe('Relative path of the file to read in the workspace (e.g. "skills/fix_issue_42.md")'),
+  }) as any,
+  execute: (async ({ filePath }: any) => {
+    if (!currentScanResult) {
+      return 'No active repository is scanned. Ask the user to scan a connection first.';
+    }
+    try {
+      const fullPath = path.join(currentScanResult.repoPath, filePath);
+      if (!fs.existsSync(fullPath)) {
+        return `File not found at: ${filePath}`;
+      }
+      return fs.readFileSync(fullPath, 'utf-8');
+    } catch (e: any) {
+      return `Failed to read file: ${e.message}`;
+    }
+  }) as any,
+} as any);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// execute_playbook_with_gemini_cli
+// ─────────────────────────────────────────────────────────────────────────────
+export const executePlaybookWithGeminiTool = new FunctionTool({
+  name: 'execute_playbook_with_gemini_cli',
+  description:
+    'Executes the Gemini CLI headlessly to run a generated playbook markdown file in the workspace, apply code modifications, and automatically create a pull/merge request.',
+  parameters: z.object({
+    playbookFilePath: z.string().describe('Relative path of the playbook file in the workspace (e.g. "skills/fix_issue_7875.md")'),
+    issueNumber: z.string().describe('The ID of the issue being fixed'),
+    connectionName: z.string().describe('The name of the active connection profile in BaseFlow'),
+    sessionId: z.string().describe('The current chat session ID to stream logs to'),
+  }) as any,
+  execute: (async ({ playbookFilePath, issueNumber, connectionName, sessionId }: any) => {
+    if (!currentScanResult) {
+      return 'No repository is scanned. Ask the user to scan a connection first.';
+    }
+
+    const repoPath = currentScanResult.repoPath;
+    const fullPlaybookPath = path.join(repoPath, playbookFilePath);
+    if (!fs.existsSync(fullPlaybookPath)) {
+      return `Playbook file not found at: ${playbookFilePath}`;
+    }
+
+    const devops = await getDevOpsInfo(connectionName);
+    if (!devops) {
+      return 'Profile / connection details not found.';
+    }
+
+    const token = devops.profile?.options?.gitToken;
+    if (!token) {
+      return 'Git token is not configured for this connection profile.';
+    }
+
+    const sendLog = (text: string) => {
+      const stream = activeStreams.get(sessionId);
+      if (stream) stream(text);
+      process.stdout.write(text);
+    };
+
+    try {
+      let resultUrl = '';
+
+      await executePlaybookWorkflow({
+        conn: connectionName,
+        repoPath,
+        playbookPath: playbookFilePath,
+        issueNumber,
+        devops,
+        token,
+        logLabel: 'Run Playbook Tool',
+        onChunk: (chunk) => sendLog(chunk),
+        onError: (err) => {
+          throw new Error(err);
+        },
+        onDone: (mrUrl) => {
+          resultUrl = mrUrl;
+        },
+        onFileModified: (filePath) => {
+          modifiedFiles.add(filePath);
+        },
+      });
+
+      if (resultUrl) {
+        const providerVerb = devops.provider === 'github' ? 'Pull Request' : 'Merge Request';
+        sendLog(`\n\n🎉 **${providerVerb} Created Successfully!**\n[Click here to view it](${resultUrl})\n`);
+        return `Playbook executed and ${providerVerb} created at: ${resultUrl}`;
+      }
+
+      sendLog(`\n\nNo files were modified by the Gemini CLI.\n`);
+      return 'No files were modified by the Gemini CLI.';
+    } catch (e: any) {
+      sendLog(`\n❌ **Error executing playbook:** ${e.message}\n`);
+      return `Failed to execute playbook: ${e.message}`;
+    }
+  }) as any,
 } as any);

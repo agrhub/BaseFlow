@@ -6,7 +6,18 @@
         <el-col :xs="24" :md="6">
           <el-card class="doc-list-card glass-panel">
             <template #header>
-              <div class="card-header">📂 {{ store.t('Codebase Docs') }}</div>
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>📂 {{ store.t('Codebase Docs') }}</span>
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  :icon="Refresh"
+                  :loading="loadingDocuments"
+                  @click="emit('refresh-documents')"
+                  :title="store.t('Refresh')"
+                />
+              </div>
             </template>
             <div class="doc-list-content">
               <div 
@@ -161,7 +172,7 @@
 import { ref, watch, computed } from 'vue';
 import { store } from '../../stores';
 import { ElMessage } from 'element-plus';
-import { FolderOpened } from '@element-plus/icons-vue';
+import { FolderOpened, Refresh } from '@element-plus/icons-vue';
 import MarkdownIt from 'markdown-it';
 
 
@@ -184,6 +195,7 @@ const emit = defineEmits<{
   (e: 'verify-mcp'): void;
   (e: 'publish-to-catalog'): void;
   (e: 'ask-agent', doc: string): void;
+  (e: 'refresh-documents'): void;
 }>();
 
 const isGeneratedPlaybook = computed(() => {

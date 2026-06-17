@@ -33,30 +33,41 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.writeWorkspaceFileTool = exports.auditSecurityVulnerabilitiesTool = exports.submitMrReviewTool = exports.createMergeRequestFromWorkspaceTool = exports.publishSkillToCatalogTool = exports.generateDevOpsHealthScoreTool = exports.analyzePipelineFailureTool = exports.resolveIssueWithAITool = void 0;
+exports.executePlaybookWithGeminiTool = exports.readWorkspaceFileTool = exports.writeWorkspaceFileTool = exports.auditSecurityVulnerabilitiesTool = exports.submitMrReviewTool = exports.createMergeRequestFromWorkspaceTool = exports.publishSkillToCatalogTool = exports.generateDevOpsHealthScoreTool = exports.analyzePipelineFailureTool = exports.resolveIssueWithAITool = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const zod_1 = require("zod");
 const adk_1 = require("@google/adk");
 const types_1 = require("./types");
+const playbook_1 = require("../../utils/playbook");
+const helpers_1 = require("../../routes/helpers");
+const agent_1 = require("../agent");
+// ─────────────────────────────────────────────────────────────────────────────
+// resolve_issue_with_ai
+// ─────────────────────────────────────────────────────────────────────────────
 exports.resolveIssueWithAITool = new adk_1.FunctionTool({
     name: 'resolve_issue_with_ai',
-    description: 'Analyzes a GitLab or GitHub issue and generates a detailed step-by-step fix playbook as a skill markdown file in the repository workspace. Optionally prepares a comment to post back on the issue.',
+    description: 'Analyzes a GitLab or GitHub issue and generates a detailed step-by-step fix playbook as a skill markdown file in the repository workspace.',
     parameters: zod_1.z.object({
         issueTitle: zod_1.z.string().describe('Title of the issue'),
         issueDescription: zod_1.z.string().describe('Full description / body of the issue'),
         issueNumber: zod_1.z.string().describe('Issue number or IID, e.g. "42"'),
-        provider: zod_1.z.enum(['gitlab', 'github']).describe('The VCS provider')
+        provider: zod_1.z.enum(['gitlab', 'github']).describe('The VCS provider'),
     }),
     execute: (async ({ issueTitle, issueDescription, issueNumber, provider }) => {
-        if (!types_1.currentScanResult)
+        if (!types_1.currentScanResult) {
             return 'No repository is scanned. Ask the user to scan a connection first.';
+        }
         // Find potentially relevant classes based on issue keywords
-        const keywords = (issueTitle + ' ' + issueDescription).toLowerCase().split(/\W+/).filter(w => w.length > 3);
+        const keywords = (issueTitle + ' ' + issueDescription)
+            .toLowerCase()
+            .split(/\W+/)
+            .filter((w) => w.length > 3);
         const relevantClasses = types_1.currentScanResult.classes
-            .filter(c => keywords.some(kw => c.name.toLowerCase().includes(kw) || (c.filePath && c.filePath.toLowerCase().includes(kw))))
+            .filter((c) => keywords.some((kw) => c.name.toLowerCase().includes(kw) ||
+            (c.filePath && c.filePath.toLowerCase().includes(kw))))
             .slice(0, 6)
-            .map(c => c.name);
+            .map((c) => c.name);
         const skillContent = [
             `# 🤖 AI Fix Playbook – Issue #${issueNumber}: ${issueTitle}`,
             ``,
@@ -69,7 +80,7 @@ exports.resolveIssueWithAITool = new adk_1.FunctionTool({
             ``,
             `## 🔍 Relevant Codebase Components`,
             relevantClasses.length > 0
-                ? relevantClasses.map(c => `- \`${c}\``).join('\n')
+                ? relevantClasses.map((c) => `- \`${c}\``).join('\n')
                 : '_No directly matching classes found. Perform a broader search._',
             ``,
             `## 🛠️ Fix Instructions`,
@@ -85,19 +96,24 @@ exports.resolveIssueWithAITool = new adk_1.FunctionTool({
             `- Code review approved and MR merged.`,
         ].join('\n');
         const filePath = `skills/fix_issue_${issueNumber}.md`;
-        const fullPath = require('path').join(types_1.currentScanResult.repoPath, filePath);
-        const fs = require('fs');
-        const parentDir = require('path').dirname(fullPath);
-        if (!fs.existsSync(parentDir))
+        const fullPath = path.join(types_1.currentScanResult.repoPath, filePath);
+        const parentDir = path.dirname(fullPath);
+        if (!fs.existsSync(parentDir)) {
             fs.mkdirSync(parentDir, { recursive: true });
+        }
         fs.writeFileSync(fullPath, skillContent, 'utf-8');
         types_1.pendingActions.push({
-            type: 'SKILL_CREATED',
-            payload: { filePath, issueNumber, issueTitle, provider }
+            type: 'PLAYBOOK_CREATED',
+            payload: { filePath, issueNumber, issueTitle, provider },
         });
-        return `✅ AI Fix Playbook created at \`${filePath}\`.\n\nRelevant components identified: ${relevantClasses.join(', ') || 'none matched'}.\n\nYou can now review the playbook in the Documents tab or publish it to the GitLab AI Catalog.`;
-    })
+        return (`✅ AI Fix Playbook created at \`${filePath}\`.\n\n` +
+            `Relevant components identified: ${relevantClasses.join(', ') || 'none matched'}.\n\n` +
+            `You can now review the playbook in the Documents tab or publish it to the GitLab AI Catalog.`);
+    }),
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// analyze_pipeline_failure
+// ─────────────────────────────────────────────────────────────────────────────
 exports.analyzePipelineFailureTool = new adk_1.FunctionTool({
     name: 'analyze_pipeline_failure',
     description: 'Analyzes a failed CI/CD pipeline or workflow run. Reads the failure context, cross-references relevant codebase components, and generates a root-cause analysis with actionable fix suggestions.',
@@ -105,23 +121,23 @@ exports.analyzePipelineFailureTool = new adk_1.FunctionTool({
         pipelineId: zod_1.z.string().describe('The pipeline ID or run number'),
         ref: zod_1.z.string().describe('The branch or ref that failed'),
         provider: zod_1.z.enum(['gitlab', 'github']).describe('The VCS provider'),
-        jobLog: zod_1.z.string().optional().describe('Optional: raw job log output or error snippet to analyze')
+        jobLog: zod_1.z.string().optional().describe('Optional: raw job log output or error snippet to analyze'),
     }),
     execute: (async ({ pipelineId, ref, provider, jobLog }) => {
         if (!types_1.currentScanResult)
             return 'No repository is scanned.';
         const logSnippet = jobLog
-            ? jobLog.slice(-3000) // Use last 3000 chars of log
+            ? jobLog.slice(-3000)
             : `No log provided for pipeline #${pipelineId} on ref "${ref}".`;
         // Heuristically find file references in the log
         const fileMatches = [...(logSnippet.matchAll(/([\w/\-.]+\.(ts|js|py|java|cs|vue))/g))]
-            .map(m => m[1])
+            .map((m) => m[1])
             .filter((v, i, a) => a.indexOf(v) === i)
             .slice(0, 8);
         const relatedClasses = types_1.currentScanResult.classes
-            .filter(c => fileMatches.some(f => c.filePath && c.filePath.includes(f.replace(/.*\//, ''))))
+            .filter((c) => fileMatches.some((f) => c.filePath && c.filePath.includes(f.replace(/.*\//, ''))))
             .slice(0, 5)
-            .map(c => c.name);
+            .map((c) => c.name);
         const analysis = [
             `## 🔴 Pipeline Failure Analysis – #${pipelineId} (${ref})`,
             ``,
@@ -134,10 +150,10 @@ exports.analyzePipelineFailureTool = new adk_1.FunctionTool({
             '```',
             ``,
             `### 🔍 Files Referenced in Failure`,
-            fileMatches.length > 0 ? fileMatches.map(f => `- \`${f}\``).join('\n') : '_No file references detected in log._',
+            fileMatches.length > 0 ? fileMatches.map((f) => `- \`${f}\``).join('\n') : '_No file references detected in log._',
             ``,
             `### 🧩 Related Codebase Classes`,
-            relatedClasses.length > 0 ? relatedClasses.map(c => `- \`${c}\``).join('\n') : '_No matching classes found._',
+            relatedClasses.length > 0 ? relatedClasses.map((c) => `- \`${c}\``).join('\n') : '_No matching classes found._',
             ``,
             `### 💡 Recommended Actions`,
             `1. Open the files referenced above in the mindmap and run the class inspector.`,
@@ -148,23 +164,25 @@ exports.analyzePipelineFailureTool = new adk_1.FunctionTool({
         if (relatedClasses.length > 0) {
             types_1.pendingActions.push({
                 type: 'HIGHLIGHT_CLASS',
-                payload: { className: relatedClasses[0] }
+                payload: { className: relatedClasses[0] },
             });
         }
         return analysis;
-    })
+    }),
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// generate_devops_health_score
+// ─────────────────────────────────────────────────────────────────────────────
 exports.generateDevOpsHealthScoreTool = new adk_1.FunctionTool({
     name: 'generate_devops_health_score',
     description: 'Analyzes DevOps metrics (open issues count, failed pipelines, MR age) and generates a DevOps Health Score (0-100) with a narrative summary and actionable recommendations.',
     parameters: zod_1.z.object({
         openIssues: zod_1.z.number().describe('Number of open issues'),
         openMRs: zod_1.z.number().describe('Number of open merge/pull requests'),
-        recentPipelines: zod_1.z.array(zod_1.z.object({
-            status: zod_1.z.string(),
-            ref: zod_1.z.string()
-        })).describe('Array of recent pipeline/run statuses'),
-        provider: zod_1.z.enum(['gitlab', 'github', 'both']).describe('The VCS provider(s) in use')
+        recentPipelines: zod_1.z
+            .array(zod_1.z.object({ status: zod_1.z.string(), ref: zod_1.z.string() }))
+            .describe('Array of recent pipeline/run statuses'),
+        provider: zod_1.z.enum(['gitlab', 'github', 'both']).describe('The VCS provider(s) in use'),
     }),
     execute: (async ({ openIssues, openMRs, recentPipelines, provider }) => {
         const pipelines = Array.isArray(recentPipelines) ? recentPipelines : [];
@@ -175,8 +193,14 @@ exports.generateDevOpsHealthScoreTool = new adk_1.FunctionTool({
         const issueScore = Math.max(0, 100 - openIssues * 3);
         const mrScore = Math.max(0, 100 - openMRs * 5);
         const pipelineScore = pipelineHealthRate;
-        const overallScore = Math.round((issueScore * 0.3 + mrScore * 0.3 + pipelineScore * 0.4));
-        const grade = overallScore >= 85 ? '🟢 Excellent' : overallScore >= 65 ? '🟡 Good' : overallScore >= 40 ? '🟠 Needs Attention' : '🔴 Critical';
+        const overallScore = Math.round(issueScore * 0.3 + mrScore * 0.3 + pipelineScore * 0.4);
+        const grade = overallScore >= 85
+            ? '🟢 Excellent'
+            : overallScore >= 65
+                ? '🟡 Good'
+                : overallScore >= 40
+                    ? '🟠 Needs Attention'
+                    : '🔴 Critical';
         const summary = [
             `## 📊 DevOps Health Score: **${overallScore}/100** ${grade}`,
             ``,
@@ -187,15 +211,24 @@ exports.generateDevOpsHealthScoreTool = new adk_1.FunctionTool({
             `| Pipeline Success Rate | ${Math.round(pipelineHealthRate)}% (${successfulPipelines}/${totalPipelines}) | ${Math.round(pipelineScore)}/100 |`,
             ``,
             `### 💡 Recommendations`,
-            openIssues > 10 ? `- ⚠️ High issue backlog (${openIssues} open). Prioritize triage with the AI Issue Resolver.` : `- ✅ Issue backlog is healthy.`,
-            openMRs > 5 ? `- ⚠️ ${openMRs} open MRs may indicate review bottleneck. Consider pair-review sessions.` : `- ✅ MR throughput looks good.`,
-            failedPipelines > 0 ? `- 🔴 ${failedPipelines} recent pipeline failure(s). Use the CI/CD Watchdog to analyze root causes.` : `- ✅ Recent pipelines are healthy.`,
+            openIssues > 10
+                ? `- ⚠️ High issue backlog (${openIssues} open). Prioritize triage with the AI Issue Resolver.`
+                : `- ✅ Issue backlog is healthy.`,
+            openMRs > 5
+                ? `- ⚠️ ${openMRs} open MRs may indicate review bottleneck. Consider pair-review sessions.`
+                : `- ✅ MR throughput looks good.`,
+            failedPipelines > 0
+                ? `- 🔴 ${failedPipelines} recent pipeline failure(s). Use the CI/CD Watchdog to analyze root causes.`
+                : `- ✅ Recent pipelines are healthy.`,
             ``,
             `> Powered by BaseFlow AI Architect Agent via ${provider === 'both' ? 'GitLab Duo + GitHub' : provider === 'gitlab' ? 'GitLab Duo' : 'GitHub'} MCP.`,
         ].join('\n');
         return summary;
-    })
+    }),
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// publish_skill_to_catalog
+// ─────────────────────────────────────────────────────────────────────────────
 exports.publishSkillToCatalogTool = new adk_1.FunctionTool({
     name: 'publish_skill_to_catalog',
     description: 'Prepares a generated skill/playbook file for publication to the AI Catalog (GitLab Duo or GitHub Copilot). Returns the formatted content and a deep-link URL.',
@@ -203,21 +236,16 @@ exports.publishSkillToCatalogTool = new adk_1.FunctionTool({
         skillFilePath: zod_1.z.string().describe('Relative path of the skill file in the workspace (e.g. "skills/fix_issue_42.md")'),
         agentName: zod_1.z.string().optional().describe('Name for the custom agent, defaults to the skill file name'),
         provider: zod_1.z.enum(['github', 'gitlab']).optional().describe('The AI provider (github or gitlab)'),
-        catalogUrl: zod_1.z.string().optional().describe('The deep-link URL to the catalog settings page')
+        catalogUrl: zod_1.z.string().optional().describe('The deep-link URL to the catalog settings page'),
     }),
     execute: (async ({ skillFilePath, agentName, provider = 'gitlab', catalogUrl }) => {
         if (!types_1.currentScanResult)
             return 'No active repository. Please scan a connection first.';
-        const fs = require('fs');
-        const path = require('path');
         const fullPath = path.join(types_1.currentScanResult.repoPath, skillFilePath);
-        let skillContent = '';
-        if (fs.existsSync(fullPath)) {
-            skillContent = fs.readFileSync(fullPath, 'utf-8');
-        }
-        else {
+        if (!fs.existsSync(fullPath)) {
             return `Skill file not found at ${skillFilePath}. Please generate it first using 'resolve_issue_with_ai'.`;
         }
+        const skillContent = fs.readFileSync(fullPath, 'utf-8');
         const resolvedAgentName = agentName || path.basename(skillFilePath, '.md').replace(/_/g, ' ');
         const isGitHub = provider === 'github';
         const configTitle = isGitHub ? 'GitHub Copilot Custom Agent Configuration' : 'GitLab Duo Custom Agent Configuration';
@@ -235,7 +263,9 @@ exports.publishSkillToCatalogTool = new adk_1.FunctionTool({
             skillContent,
             ``,
             `## Instructions for ${targetName}`,
-            isGitHub ? `1. Go to your GitHub organization or account settings → Copilot → Copilot Extensions.` : `1. Go to your GitLab group → Settings → GitLab Duo → Custom and external agents and flows.`,
+            isGitHub
+                ? `1. Go to your GitHub organization or account settings → Copilot → Copilot Extensions.`
+                : `1. Go to your GitLab group → Settings → GitLab Duo → Custom and external agents and flows.`,
             `2. Click "New custom agent" or "Add Extension".`,
             `3. Paste the System Prompt above.`,
             `4. Name the agent: **${resolvedAgentName}**`,
@@ -244,11 +274,17 @@ exports.publishSkillToCatalogTool = new adk_1.FunctionTool({
         const finalCatalogUrl = catalogUrl || (isGitHub ? 'https://github.com/settings/copilot' : 'https://gitlab.com/-/user_settings/custom_models');
         types_1.pendingActions.push({
             type: 'CATALOG_READY',
-            payload: { agentName: resolvedAgentName, catalogUrl: finalCatalogUrl, skillFilePath }
+            payload: { agentName: resolvedAgentName, catalogUrl: finalCatalogUrl, skillFilePath },
         });
-        return `## ✅ Skill Ready for ${targetName}\n\n**Agent Name:** ${resolvedAgentName}\n\n**Next Step:** [Open Settings](${finalCatalogUrl})\n\nThe system prompt has been prepared from \`${skillFilePath}\`. Copy the content above and paste it into your custom agent configuration.`;
-    })
+        return (`## ✅ Skill Ready for ${targetName}\n\n` +
+            `**Agent Name:** ${resolvedAgentName}\n\n` +
+            `**Next Step:** [Open Settings](${finalCatalogUrl})\n\n` +
+            `The system prompt has been prepared from \`${skillFilePath}\`. Copy the content above and paste it into your custom agent configuration.`);
+    }),
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// create_merge_request_from_workspace
+// ─────────────────────────────────────────────────────────────────────────────
 exports.createMergeRequestFromWorkspaceTool = new adk_1.FunctionTool({
     name: 'create_merge_request_from_workspace',
     description: 'Creates a Merge Request or Pull Request using the files currently modified in the workspace. Call this tool after you have successfully used write_workspace_file to fix an issue.',
@@ -256,56 +292,71 @@ exports.createMergeRequestFromWorkspaceTool = new adk_1.FunctionTool({
         issueIid: zod_1.z.string().describe('The ID of the issue being fixed'),
         branchName: zod_1.z.string().describe('Name of the new branch to create (e.g. fix/issue-123)'),
         mrTitle: zod_1.z.string().describe('Title of the merge request'),
-        mrDescription: zod_1.z.string().describe('Description of the merge request')
+        mrDescription: zod_1.z.string().describe('Description of the merge request'),
     }),
     execute: (async ({ issueIid, branchName, mrTitle, mrDescription }) => {
         types_1.pendingActions.push({
             type: 'AUTO_CREATE_MR',
-            payload: { issueIid, branchName, mrTitle, mrDescription }
+            payload: { issueIid, branchName, mrTitle, mrDescription },
         });
-        return `Merge request creation process initiated. I have signaled the backend to commit the workspace changes to branch '${branchName}' and create MR '${mrTitle}'.`;
-    })
+        return (`Merge request creation process initiated. ` +
+            `I have signaled the backend to commit the workspace changes to branch '${branchName}' and create MR '${mrTitle}'.`);
+    }),
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// submit_mr_review
+// ─────────────────────────────────────────────────────────────────────────────
 exports.submitMrReviewTool = new adk_1.FunctionTool({
     name: 'submit_mr_review',
     description: 'Submits a code review for a Merge Request/Pull Request with inline comments. Call this after analyzing a provided MR diff.',
     parameters: zod_1.z.object({
         mrIid: zod_1.z.string().describe('The ID of the Merge Request being reviewed'),
         summary: zod_1.z.string().describe('A general summary of the code review'),
-        comments: zod_1.z.array(zod_1.z.object({
+        comments: zod_1.z
+            .array(zod_1.z.object({
             filePath: zod_1.z.string().describe('The path of the file being commented on'),
-            comment: zod_1.z.string().describe('The inline comment text')
-        })).describe('Array of inline comments for specific files')
+            comment: zod_1.z.string().describe('The inline comment text'),
+        }))
+            .describe('Array of inline comments for specific files'),
     }),
     execute: (async ({ mrIid, summary, comments }) => {
         types_1.pendingActions.push({
             type: 'SUBMIT_MR_REVIEW',
-            payload: { mrIid, summary, comments }
+            payload: { mrIid, summary, comments },
         });
-        return `Code review submission initiated. I have signaled the backend to post the review summary and ${comments.length} inline comments to the Merge Request.`;
-    })
+        return (`Code review submission initiated. ` +
+            `I have signaled the backend to post the review summary and ${comments.length} inline comments to the Merge Request.`);
+    }),
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// audit_security_vulnerabilities
+// ─────────────────────────────────────────────────────────────────────────────
 exports.auditSecurityVulnerabilitiesTool = new adk_1.FunctionTool({
     name: 'audit_security_vulnerabilities',
     description: 'Audits the codebase for potential security vulnerabilities and explicitly highlights the vulnerable classes/files on the mindmap with a red warning.',
     parameters: zod_1.z.object({
-        vulnerableClasses: zod_1.z.array(zod_1.z.string()).describe('An array of class names or file names that contain security vulnerabilities'),
-        summary: zod_1.z.string().describe('A summary of the security audit findings')
+        vulnerableClasses: zod_1.z
+            .array(zod_1.z.string())
+            .describe('An array of class names or file names that contain security vulnerabilities'),
+        summary: zod_1.z.string().describe('A summary of the security audit findings'),
     }),
     execute: (async ({ vulnerableClasses, summary }) => {
         types_1.pendingActions.push({
             type: 'HIGHLIGHT_VULNERABILITY',
-            payload: { classes: vulnerableClasses, summary }
+            payload: { classes: vulnerableClasses, summary },
         });
         return `Security audit completed. Highlighted ${vulnerableClasses.length} vulnerable classes on the mindmap.`;
-    })
+    }),
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// write_workspace_file
+// ─────────────────────────────────────────────────────────────────────────────
 exports.writeWorkspaceFileTool = new adk_1.FunctionTool({
     name: 'write_workspace_file',
-    description: 'Writes a file (like a skill markdown file or a code fix) to the scanned repository workspace directory. Use this to create skill markdown files at skills/name.md to run on AI agents like Antigravity.',
+    description: 'Writes a file (like a skill markdown file or a code fix) to the scanned repository workspace directory.',
     parameters: zod_1.z.object({
         filePath: zod_1.z.string().describe('Relative file path inside the repository workspace (e.g. "skills/fix_issue.md")'),
-        content: zod_1.z.string().describe('Full content of the file to write')
+        content: zod_1.z.string().describe('Full content of the file to write'),
     }),
     execute: (async ({ filePath, content }) => {
         if (!types_1.currentScanResult) {
@@ -321,12 +372,107 @@ exports.writeWorkspaceFileTool = new adk_1.FunctionTool({
             types_1.modifiedFiles.add(filePath);
             types_1.pendingActions.push({
                 type: 'PLAYBOOK_CREATED',
-                payload: { filePath }
+                payload: { filePath },
             });
             return `Successfully wrote file to workspace at ${filePath}.`;
         }
         catch (e) {
             return `Failed to write file: ${e.message}`;
         }
-    })
+    }),
+});
+// ─────────────────────────────────────────────────────────────────────────────
+// read_workspace_file
+// ─────────────────────────────────────────────────────────────────────────────
+exports.readWorkspaceFileTool = new adk_1.FunctionTool({
+    name: 'read_workspace_file',
+    description: 'Reads the content of any file inside the scanned repository workspace directory (e.g. "skills/fix_issue_42.md" or source code files).',
+    parameters: zod_1.z.object({
+        filePath: zod_1.z.string().describe('Relative path of the file to read in the workspace (e.g. "skills/fix_issue_42.md")'),
+    }),
+    execute: (async ({ filePath }) => {
+        if (!types_1.currentScanResult) {
+            return 'No active repository is scanned. Ask the user to scan a connection first.';
+        }
+        try {
+            const fullPath = path.join(types_1.currentScanResult.repoPath, filePath);
+            if (!fs.existsSync(fullPath)) {
+                return `File not found at: ${filePath}`;
+            }
+            return fs.readFileSync(fullPath, 'utf-8');
+        }
+        catch (e) {
+            return `Failed to read file: ${e.message}`;
+        }
+    }),
+});
+// ─────────────────────────────────────────────────────────────────────────────
+// execute_playbook_with_gemini_cli
+// ─────────────────────────────────────────────────────────────────────────────
+exports.executePlaybookWithGeminiTool = new adk_1.FunctionTool({
+    name: 'execute_playbook_with_gemini_cli',
+    description: 'Executes the Gemini CLI headlessly to run a generated playbook markdown file in the workspace, apply code modifications, and automatically create a pull/merge request.',
+    parameters: zod_1.z.object({
+        playbookFilePath: zod_1.z.string().describe('Relative path of the playbook file in the workspace (e.g. "skills/fix_issue_7875.md")'),
+        issueNumber: zod_1.z.string().describe('The ID of the issue being fixed'),
+        connectionName: zod_1.z.string().describe('The name of the active connection profile in BaseFlow'),
+        sessionId: zod_1.z.string().describe('The current chat session ID to stream logs to'),
+    }),
+    execute: (async ({ playbookFilePath, issueNumber, connectionName, sessionId }) => {
+        if (!types_1.currentScanResult) {
+            return 'No repository is scanned. Ask the user to scan a connection first.';
+        }
+        const repoPath = types_1.currentScanResult.repoPath;
+        const fullPlaybookPath = path.join(repoPath, playbookFilePath);
+        if (!fs.existsSync(fullPlaybookPath)) {
+            return `Playbook file not found at: ${playbookFilePath}`;
+        }
+        const devops = await (0, helpers_1.getDevOpsInfo)(connectionName);
+        if (!devops) {
+            return 'Profile / connection details not found.';
+        }
+        const token = devops.profile?.options?.gitToken;
+        if (!token) {
+            return 'Git token is not configured for this connection profile.';
+        }
+        const sendLog = (text) => {
+            const stream = agent_1.activeStreams.get(sessionId);
+            if (stream)
+                stream(text);
+            process.stdout.write(text);
+        };
+        try {
+            let resultUrl = '';
+            await (0, playbook_1.executePlaybookWorkflow)({
+                conn: connectionName,
+                repoPath,
+                playbookPath: playbookFilePath,
+                issueNumber,
+                devops,
+                token,
+                logLabel: 'Run Playbook Tool',
+                onChunk: (chunk) => sendLog(chunk),
+                onError: (err) => {
+                    throw new Error(err);
+                },
+                onDone: (mrUrl) => {
+                    resultUrl = mrUrl;
+                },
+                onFileModified: (filePath) => {
+                    types_1.modifiedFiles.add(filePath);
+                },
+            });
+            if (resultUrl) {
+                const providerVerb = devops.provider === 'github' ? 'Pull Request' : 'Merge Request';
+                sendLog(`\n\n🎉 **${providerVerb} Created Successfully!**\n[Click here to view it](${resultUrl})\n`);
+                return `Playbook executed and ${providerVerb} created at: ${resultUrl}`;
+            }
+            sendLog(`\n\nNo files were modified by the Gemini CLI.\n`);
+            return 'No files were modified by the Gemini CLI.';
+        }
+        catch (e) {
+            sendLog(`\n❌ **Error executing playbook:** ${e.message}\n`);
+            return `Failed to execute playbook: ${e.message}`;
+        }
+    }),
 });

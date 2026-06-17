@@ -32,5 +32,7 @@ exports.allTools = [
     devops_tools_1.createMergeRequestFromWorkspaceTool,
     devops_tools_1.submitMrReviewTool,
     devops_tools_1.auditSecurityVulnerabilitiesTool,
-    devops_tools_1.writeWorkspaceFileTool
+    devops_tools_1.writeWorkspaceFileTool,
+    devops_tools_1.readWorkspaceFileTool,
+    devops_tools_1.executePlaybookWithGeminiTool
 ];

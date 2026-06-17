@@ -78,7 +78,7 @@ export class GeminiService {
 
   private constructor() {
     const apiKey = process.env.GOOGLE_API_KEY || "";
-    const vertexai = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1';
+    const vertexai = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
     this.modelId = process.env.AGENT_MODEL || 'gemini-3.1-flash-lite';
 
     this.genAI = new GoogleGenAI({ vertexai, apiKey });
