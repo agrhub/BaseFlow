@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import { connectionStore } from '../services/ConnectionStore';
 import { 
   createAgentRunner, 
@@ -10,10 +11,39 @@ import { getDevOpsInfo } from './helpers';
 
 const router = express.Router();
 const runnerCache = new Map<string, any>();
+const MAX_CACHED_RUNNERS = 50;
+const MAX_MESSAGE_LENGTH = 20_000;
+const SESSION_ID_RE = /^[A-Za-z0-9_.:-]{1,128}$/;
+
+// Bounded LRU so idle sessions do not leak agent runners (and their MCP subprocesses)
+function cacheRunner(sessionId: string, value: any) {
+  runnerCache.delete(sessionId);
+  runnerCache.set(sessionId, value);
+  while (runnerCache.size > MAX_CACHED_RUNNERS) {
+    const oldestKey = runnerCache.keys().next().value as string;
+    runnerCache.delete(oldestKey);
+  }
+}
+
+// Never keep raw credentials in cache keys
+function hashConfig(parts: string[]): string {
+  return crypto.createHash('sha256').update(parts.join('\u0000')).digest('hex');
+}
+
+function validateChatInput(message: unknown, sessionId: unknown): string | null {
+  if (typeof message !== 'string' || !message.trim()) return 'message is required.';
+  if (message.length > MAX_MESSAGE_LENGTH) return `message is too long (max ${MAX_MESSAGE_LENGTH} characters).`;
+  if (typeof sessionId !== 'string' || !SESSION_ID_RE.test(sessionId)) return 'Invalid sessionId.';
+  return null;
+}
 
 // 1. Endpoint to chat with the agent
 router.post('/chat', async (req: any, res: any) => {
   const { message, sessionId, connectionName } = req.body;
+  const inputError = validateChatInput(message, sessionId);
+  if (inputError) {
+    return res.status(400).json({ error: inputError });
+  }
   
   let effectiveApiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
   let effectiveGitToken = '';
@@ -46,7 +76,7 @@ router.post('/chat', async (req: any, res: any) => {
 
   try {
     let cached = runnerCache.get(sessionId);
-    const configHash = `${connectionName || ''}_${effectiveApiKey || ''}_${effectiveGitToken || ''}_${effectiveGitMcpServer || ''}_${effectiveProvider || ''}`;
+    const configHash = hashConfig([connectionName || '', effectiveApiKey || '', effectiveGitToken || '', effectiveGitMcpServer || '', effectiveProvider || '']);
     if (!cached || cached.configHash !== configHash) {
       console.log(`Creating new agent runner for session ${sessionId} (configHash changed or new session)...`);
       const runner = createAgentRunner({
@@ -57,7 +87,7 @@ router.post('/chat', async (req: any, res: any) => {
         provider: effectiveProvider
       });
       cached = { runner, configHash };
-      runnerCache.set(sessionId, cached);
+      cacheRunner(sessionId, cached);
     }
     const runner = cached.runner;
 
@@ -93,6 +123,10 @@ router.post('/chat', async (req: any, res: any) => {
 // 1.5 Endpoint to chat with the agent (SSE Streaming)
 router.post('/chat/stream', async (req: any, res: any) => {
   const { message, sessionId, connectionName } = req.body;
+  const inputError = validateChatInput(message, sessionId);
+  if (inputError) {
+    return res.status(400).json({ error: inputError });
+  }
   
   let effectiveApiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
   let effectiveGitToken = '';
@@ -128,7 +162,7 @@ router.post('/chat/stream', async (req: any, res: any) => {
 
   try {
     let cached = runnerCache.get(sessionId);
-    const configHash = `${connectionName || ''}_${effectiveApiKey || ''}_${effectiveGitToken || ''}_${effectiveGitMcpServer || ''}_${effectiveProvider || ''}`;
+    const configHash = hashConfig([connectionName || '', effectiveApiKey || '', effectiveGitToken || '', effectiveGitMcpServer || '', effectiveProvider || '']);
     if (!cached || cached.configHash !== configHash) {
       const runner = createAgentRunner({
         apiKey: effectiveApiKey,
@@ -138,7 +172,7 @@ router.post('/chat/stream', async (req: any, res: any) => {
         provider: effectiveProvider
       });
       cached = { runner, configHash };
-      runnerCache.set(sessionId, cached);
+      cacheRunner(sessionId, cached);
     }
     const runner = cached.runner;
 
