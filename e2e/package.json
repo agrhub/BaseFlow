@@ -1,0 +1,11 @@
+{
+  "name": "baseflow-e2e",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "playwright test --trace off"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

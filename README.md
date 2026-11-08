@@ -188,7 +188,10 @@ graph TD
 ```bash
 npm test            # backend unit tests (path containment, URL validation, encryption, rate limiting)
 npm run typecheck   # backend tsc + frontend vue-tsc
+npm run e2e         # end-to-end browser tests (Playwright)
 ```
+
+The end-to-end suite in [e2e/](e2e/) builds the frontend, starts the real backend in production mode against mock Anthropic / OpenAI APIs (no keys, no cost) and drives Chromium through login, connections, chat, model switching, reload and the conversation list. First run: `npx playwright install chromium` inside `e2e/`. CI runs it after the backend and frontend jobs.
 
 ---
 
