@@ -6,7 +6,9 @@ import {
   chatWithAgent, 
   getChatHistory, 
   clearAgentSession,
-  releaseAgentSession
+  releaseAgentSession,
+  listConversations,
+  ownerOf
 } from '../agent/agent';
 import { getDevOpsInfo, getOrScanRepo } from './helpers';
 import { defaultLlmProvider, isLlmProviderConfigured, isLlmProviderId, listLlmProviders, LlmProviderId } from '../llm/providers';
@@ -282,6 +284,24 @@ router.delete('/agent/session', async (req: any, res: any) => {
     runnerCache.delete(sessionId);
   }
   res.json({ msg: 'Session cleared successfully' });
+});
+
+// 3b. Conversations of this browser (for the conversation list)
+router.get('/agent/conversations', async (req: any, res: any) => {
+  try {
+    const owner = ownerOf(scopedSessionId(req, 'list'));
+    const conversations = await listConversations(owner);
+    res.json({
+      conversations: conversations.map(c => ({
+        id: c.id.slice(owner.length + 1), // client-side id
+        title: c.title,
+        updatedAt: c.updatedAt
+      }))
+    });
+  } catch (err: any) {
+    console.error('[Chat] Failed to list conversations:', err?.message || err);
+    res.status(500).json({ error: 'Failed to list conversations.' });
+  }
 });
 
 // 4. Available chat model providers (only metadata, never credentials)

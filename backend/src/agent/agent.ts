@@ -38,6 +38,48 @@ function createSessionService(): { service: BaseSessionService; persistent: bool
 
 const { service: sharedSessionService, persistent: persistentSessions } = createSessionService();
 
+/**
+ * Chat session ids are "<owner>:<client id>" (owner = hashed browser id, see routes/chat.ts).
+ * The owner is used as the ADK user id so a browser's conversations can be listed.
+ */
+export function ownerOf(sessionId: string): string {
+  const i = sessionId.indexOf(':');
+  return i > 0 ? sessionId.slice(0, i) : sessionId;
+}
+
+export interface ConversationSummary {
+  /** Full (scoped) session id */
+  id: string;
+  title: string;
+  /** Last update, epoch milliseconds */
+  updatedAt: number;
+}
+
+/** Most recent conversations of one browser (newest first). */
+export async function listConversations(owner: string, limit = 50): Promise<ConversationSummary[]> {
+  const { sessions } = await sharedSessionService.listSessions({ appName: APP_NAME, userId: owner });
+  const recent = [...(sessions || [])]
+    .sort((a, b) => (Number(b.lastUpdateTime) || 0) - (Number(a.lastUpdateTime) || 0))
+    .slice(0, limit);
+  // listSessions omits session state, so read each title (with a single recent event)
+  return Promise.all(recent.map(async summary => {
+    const full = await sharedSessionService.getSession({
+      appName: APP_NAME,
+      userId: owner,
+      sessionId: summary.id,
+      config: { numRecentEvents: 1 }
+    });
+    const title = full?.state?.title;
+    const t = Number(summary.lastUpdateTime) || 0;
+    return {
+      id: summary.id,
+      title: typeof title === 'string' && title ? title : 'Untitled conversation',
+      // Stores report seconds or milliseconds
+      updatedAt: t > 0 && t < 1e12 ? Math.round(t * 1000) : t
+    };
+  }));
+}
+
 export function createAgentRunner(config: AgentConfig) {
   const llmProvider: LlmProviderId = config.llmProvider || 'gemini';
   // Set Gemini API Key for ADK's built-in Gemini model
@@ -199,7 +241,7 @@ export async function getChatHistory(sessionId: string): Promise<Array<{ role: s
   const cached = persistentSessions ? undefined : chatHistoryStore.get(sessionId);
   if (cached) return cached;
   try {
-    const session = await sharedSessionService.getSession({ appName: APP_NAME, userId: sessionId, sessionId });
+    const session = await sharedSessionService.getSession({ appName: APP_NAME, userId: ownerOf(sessionId), sessionId });
     if (!session) return [];
     const history: Array<{ role: string; content: string }> = [];
     for (const event of session.events || []) {
@@ -263,14 +305,16 @@ export async function chatWithAgent(
     // Ensure session exists
     const existingSession = await (runner as any).sessionService.getSession({
       appName: (runner as any).appName,
-      userId: sessionId,
+      userId: ownerOf(sessionId),
       sessionId
     });
     if (!existingSession) {
       await (runner as any).sessionService.createSession({
         appName: (runner as any).appName,
-        userId: sessionId,
-        sessionId
+        userId: ownerOf(sessionId),
+        sessionId,
+        // Shown in the conversation list
+        state: { title: message.trim().replace(/\s+/g, ' ').slice(0, 80) }
       });
     }
 
@@ -289,7 +333,7 @@ export async function chatWithAgent(
   let responseMessage = '';
   try {
     const eventGenerator = runner.runAsync({
-      userId: sessionId,
+      userId: ownerOf(sessionId),
       sessionId,
       newMessage: { role: 'user', parts: [{ text: userText }] }
     });
@@ -401,7 +445,7 @@ export async function clearAgentSession(_runner: unknown, sessionId: string): Pr
   try {
     await sharedSessionService.deleteSession({
       appName: APP_NAME,
-      userId: sessionId,
+      userId: ownerOf(sessionId),
       sessionId
     });
     clearChatHistory(sessionId);
