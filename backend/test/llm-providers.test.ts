@@ -7,6 +7,7 @@ import { AnthropicLlm, echoableContent } from '../src/llm/anthropic_llm';
 import { OpenAiLlm, toChatMessages } from '../src/llm/openai_llm';
 import { genaiSchemaToJsonSchema } from '../src/llm/schema';
 import { defaultLlmProvider, listLlmProviders } from '../src/llm/providers';
+import { createAgentRunner, chatWithAgent } from '../src/agent/agent';
 
 // ── Fake SDK clients ──────────────────────────────────────────────────────────
 
@@ -223,4 +224,30 @@ test('only configured providers are offered and the default respects LLM_PROVIDE
   } finally {
     process.env = saved;
   }
+});
+
+// ── Switching providers mid-conversation ─────────────────────────────────────
+
+test('switching the chat model keeps the conversation history', async () => {
+  const claude = fakeAnthropic([
+    { content: [{ type: 'thinking', thinking: '', signature: 'sig' }, { type: 'text', text: 'Nice to meet you, Tan.' }], stop_reason: 'end_turn', usage }
+  ]);
+  const openai = fakeOpenAi([
+    { choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Your name is Tan.' } }] }
+  ]);
+  const sessionId = 'switch-test';
+
+  const runner1 = createAgentRunner({ model: new AnthropicLlm({ client: claude.client }) });
+  const first = await chatWithAgent(runner1, sessionId, 'My name is Tan.');
+  assert.match(first.reply, /Nice to meet you/);
+
+  // A new runner (as created when the user picks another provider) sees the same session
+  const runner2 = createAgentRunner({ model: new OpenAiLlm({ client: openai.client }) });
+  const second = await chatWithAgent(runner2, sessionId, 'What is my name?');
+  assert.match(second.reply, /Your name is Tan/);
+
+  const history = JSON.stringify(openai.requests[0].messages);
+  assert.match(history, /My name is Tan\./);
+  assert.match(history, /Nice to meet you, Tan\./);
+  assert.match(history, /What is my name\?/);
 });
