@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as https from 'https';
 import { simpleGit } from 'simple-git';
-import { execSync, exec } from 'child_process';
+import { execFileSync } from 'child_process';
+import { assertValidRepoUrl, remoteRepoDirName, assertLocalPathAllowed, execFileAsync } from '../utils/security';
 import { geminiService } from '../services/GeminiService';
 import { parseRepository, ParsedClass, parseSingleFile, generateGraphLayout } from '../utils/parser';
 import { connectionStore } from '../services/ConnectionStore';
@@ -19,10 +20,18 @@ const repoCache = new Map<string, CachedRepo>();
 
 export const activeSyncPaths = new Map<string, string>();
 
+// Cache files are named after the connection; never allow path separators to escape tempDir
+export function cacheFileName(profileName: string): string {
+  if (typeof profileName !== 'string' || !profileName || /[\\/\0]/.test(profileName) || profileName.includes('..')) {
+    throw new Error('Invalid connection name.');
+  }
+  return `${profileName}_cache.json`;
+}
+
 export function clearRepoCache(profileName: string) {
   console.log(`Clearing in-memory and disk cache for connection ${profileName}...`);
   repoCache.delete(profileName);
-  const cachePath = path.join(tempDir, `${profileName}_cache.json`);
+  const cachePath = path.join(tempDir, cacheFileName(profileName));
   if (fs.existsSync(cachePath)) {
     try {
       fs.unlinkSync(cachePath);
@@ -144,11 +153,13 @@ export function extractZipAndRename(zipPath: string, targetPath: string): void {
     console.log(`Extracting ${zipPath} to ${tempExtractDir}...`);
     if (process.platform === 'win32') {
       // Windows: use PowerShell Expand-Archive
-      const powershellCmd = `powershell -Command "Expand-Archive -Path '${zipPath.replace(/'/g, "''")}' -DestinationPath '${tempExtractDir.replace(/'/g, "''")}' -Force"`;
-      execSync(powershellCmd, { stdio: 'ignore' });
+      execFileSync('powershell', ['-NoProfile', '-Command', 'Expand-Archive -LiteralPath $env:BF_SRC -DestinationPath $env:BF_DEST -Force'], {
+        stdio: 'ignore',
+        env: { ...process.env, BF_SRC: zipPath, BF_DEST: tempExtractDir }
+      });
     } else {
-      // Linux/macOS: use unzip
-      execSync(`unzip -o "${zipPath}" -d "${tempExtractDir}"`, { stdio: 'ignore' });
+      // Linux/macOS: use unzip (argument array — no shell interpolation)
+      execFileSync('unzip', ['-o', '-q', zipPath, '-d', tempExtractDir], { stdio: 'ignore' });
     }
 
     // Find the wrapper folder extracted
@@ -193,24 +204,11 @@ export function extractZipAndRename(zipPath: string, targetPath: string): void {
   }
 }
 
-function execAsync(command: string, options?: any): Promise<void> {
-  return new Promise((resolve, reject) => {
-    exec(command, options, (error, stdout, stderr) => {
-      const outStr = stdout ? stdout.toString() : '';
-      const errStr = stderr ? stderr.toString() : '';
-      if (outStr.trim()) {
-        console.log(`[execAsync stdout]: ${outStr.trim()}`);
-      }
-      if (errStr.trim()) {
-        console.warn(`[execAsync stderr]: ${errStr.trim()}`);
-      }
-      if (error) {
-        reject(error);
-      } else {
-        resolve();
-      }
-    });
-  });
+async function execFileChecked(file: string, args: string[], options: any = {}): Promise<void> {
+  const { stdout, stderr, code } = await execFileAsync(file, args, options);
+  if (stdout.trim()) console.log(`[exec ${file} stdout]: ${stdout.trim().substring(0, 2000)}`);
+  if (stderr.trim()) console.warn(`[exec ${file} stderr]: ${stderr.trim().substring(0, 2000)}`);
+  if (code !== 0) throw new Error(`${file} exited with code ${code}`);
 }
 
 function cleanDirRecursive(dirPath: string) {
@@ -337,7 +335,7 @@ export async function zipCloneOrPull(uri: string, targetPath: string, options: a
     // 6. Package the repository contents in /tmp as a clean zip (with no top-level wrapper directory)
     console.log(`Creating a clean zip from ${localRepoPath} to ${localCleanZipPath}...`);
     try {
-      execSync(`zip -r "${localCleanZipPath}" .`, { cwd: localRepoPath, stdio: 'ignore' });
+      execFileSync('zip', ['-r', '-q', localCleanZipPath, '.'], { cwd: localRepoPath, stdio: 'ignore' });
     } catch (zipErr: any) {
       console.error(`Failed to create clean zip using zip command:`, zipErr.message || zipErr);
       throw zipErr;
@@ -367,7 +365,7 @@ export async function zipCloneOrPull(uri: string, targetPath: string, options: a
 
         // 8. Extract clean ZIP from local /tmp directly into GCS targetPath
         console.log(`[GCS Background] Extracting clean ZIP to GCS targetPath at ${targetPath}...`);
-        await execAsync(`unzip -o "${localCleanZipPath}" -d "${targetPath}"`);
+        await execFileChecked('unzip', ['-o', '-q', localCleanZipPath, '-d', targetPath]);
         console.log(`[GCS Background] GCS extraction and sync completed successfully.`);
       } catch (bgErr: any) {
         console.error(`[GCS Background Error] Failed to clear and extract on GCS:`, bgErr.message || bgErr);
@@ -440,11 +438,13 @@ export async function zipRefresh(repoPath: string, cachePath: string): Promise<a
     console.log(`Zipping repository folder ${repoPath} to ${localZipPath}...`);
     if (process.platform === 'win32') {
       // Windows: use PowerShell Compress-Archive
-      const powershellCmd = `powershell -Command "Compress-Archive -Path '${repoPath.replace(/'/g, "''")}\\*' -DestinationPath '${localZipPath.replace(/'/g, "''")}' -Force"`;
-      execSync(powershellCmd, { stdio: 'ignore' });
+      execFileSync('powershell', ['-NoProfile', '-Command', 'Compress-Archive -Path (Join-Path $env:BF_SRC "*") -DestinationPath $env:BF_DEST -Force'], {
+        stdio: 'ignore',
+        env: { ...process.env, BF_SRC: repoPath, BF_DEST: localZipPath }
+      });
     } else {
       // Linux: use zip
-      execSync(`zip -r "${localZipPath}" .`, { cwd: repoPath, stdio: 'ignore' });
+      execFileSync('zip', ['-r', '-q', localZipPath, '.'], { cwd: repoPath, stdio: 'ignore' });
     }
 
     console.log(`Extracting zip to local /tmp path ${localRepoPath}...`);
@@ -453,10 +453,12 @@ export async function zipRefresh(repoPath: string, cachePath: string): Promise<a
     }
     
     if (process.platform === 'win32') {
-      const powershellCmd = `powershell -Command "Expand-Archive -Path '${localZipPath.replace(/'/g, "''")}' -DestinationPath '${localRepoPath.replace(/'/g, "''")}' -Force"`;
-      execSync(powershellCmd, { stdio: 'ignore' });
+      execFileSync('powershell', ['-NoProfile', '-Command', 'Expand-Archive -LiteralPath $env:BF_SRC -DestinationPath $env:BF_DEST -Force'], {
+        stdio: 'ignore',
+        env: { ...process.env, BF_SRC: localZipPath, BF_DEST: localRepoPath }
+      });
     } else {
-      execSync(`unzip -o "${localZipPath}" -d "${localRepoPath}"`, { stdio: 'ignore' });
+      execFileSync('unzip', ['-o', '-q', localZipPath, '-d', localRepoPath], { stdio: 'ignore' });
     }
 
     console.log(`Generating parse cache locally from ${localRepoPath}...`);
@@ -488,47 +490,38 @@ export async function zipRefresh(repoPath: string, cachePath: string): Promise<a
 // Git repository URL parser
 export function parseGitUrl(url: string) {
   if (!url) return null;
-  const match = url.match(/(github|gitlab)\.com[:/](.+)$/);
-  if (match) {
-    const provider = match[1];
-    let rest = match[2].replace(/\.git$/, '').replace(/\/$/, '');
-    const parts = rest.split('/');
-    if (parts.length >= 2) {
-      const owner = parts[0];
-      const repo = parts[parts.length - 1];
-      const fullPath = rest;
-      return {
-        provider,
-        owner,
-        repo,
-        fullPath
-      };
-    }
+  try {
+    return assertValidRepoUrl(url);
+  } catch {
+    return null;
   }
-  return null;
 }
 
 // Resolve Repository Path
 export function resolveRepoPath(profile: any): string {
   const uri = profile.uri || profile.string;
   if (profile.options?.type === 'local') {
-    return path.resolve(uri);
+    return assertLocalPathAllowed(uri);
   }
-  // For remote URL, return temp folder path
-  const repoName = uri.split('/').pop()?.replace('.git', '') || 'temp-repo';
-  
-  if (fs.existsSync(tempDir)) {
+  // Remote repositories are stored under tempDir/<owner>__<repo> (collision-free)
+  const dirName = remoteRepoDirName(uri);
+  const preferred = path.join(tempDir, dirName);
+  if (fs.existsSync(preferred)) return preferred;
+
+  // Backward compatibility: older versions stored repos under tempDir/<repo>
+  const legacyName = (uri.split('/').pop() || '').replace(/\.git$/, '');
+  if (legacyName && /^[A-Za-z0-9_.-]+$/.test(legacyName) && !legacyName.startsWith('.') && fs.existsSync(tempDir)) {
     try {
       const items = fs.readdirSync(tempDir);
-      const matched = items.find(item => item.toLowerCase() === repoName.toLowerCase());
+      const matched = items.find(item => item.toLowerCase() === legacyName.toLowerCase());
       if (matched) {
         return path.join(tempDir, matched);
       }
     } catch (e) {
-      console.warn(`Failed to read tempDir for case-insensitive match:`, e);
+      console.warn(`Failed to read tempDir for legacy repo lookup:`, e);
     }
   }
-  return path.join(tempDir, repoName);
+  return preferred;
 }
 
 // Helper to recursively find the latest file modification time in the repository
@@ -561,7 +554,7 @@ function getRepoLastModified(dirPath: string): number {
 
 // Resolve Cache Path
 export function resolveCachePath(profileName: string): string {
-  const cachePath = path.join(tempDir, `${profileName}_cache.json`);
+  const cachePath = path.join(tempDir, cacheFileName(profileName));
   if (!fs.existsSync(cachePath) && fs.existsSync(tempDir)) {
     try {
       const items = fs.readdirSync(tempDir);
@@ -1114,7 +1107,7 @@ export function getAuthenticatedGitUrl(uri: string, options: any): string {
 // Clone remote repo for connection creation/validation
 export async function cloneRemoteRepo(uri: string, options: any, forceClone: boolean = false): Promise<string> {
   if (options?.type === 'local') {
-    const targetPath = path.resolve(uri);
+    const targetPath = assertLocalPathAllowed(uri);
     if (!fs.existsSync(targetPath)) {
       throw new Error(`Local directory does not exist: ${targetPath}`);
     }
@@ -1122,8 +1115,8 @@ export async function cloneRemoteRepo(uri: string, options: any, forceClone: boo
   }
   
   // For remote repository
-  const repoName = uri.split('/').pop()?.replace('.git', '') || 'temp-repo';
-  const targetPath = path.join(tempDir, repoName);
+  assertValidRepoUrl(uri);
+  const targetPath = path.join(tempDir, remoteRepoDirName(uri));
   
   if (forceClone && fs.existsSync(targetPath)) {
     console.log(`Force clone requested. Deleting existing folder at ${targetPath}...`);

@@ -1,6 +1,22 @@
 import express from 'express';
 import { connectionStore } from '../services/ConnectionStore';
-import { cloneRemoteRepo, resolveRepoPath, tempDir, performCompleteAnalysis } from './helpers';
+import { cloneRemoteRepo, resolveRepoPath, tempDir, clearRepoCache } from './helpers';
+import { assertValidConnectionName, assertValidRepoUrl, assertLocalPathAllowed, isPathInside } from '../utils/security';
+
+function validateConnectionInput(name: unknown, uri: unknown, options: any) {
+  assertValidConnectionName(name);
+  if (typeof uri !== 'string' || !uri.trim()) {
+    throw new Error('Path/URL is required.');
+  }
+  if (options?.type === 'local') {
+    assertLocalPathAllowed(uri);
+  } else {
+    assertValidRepoUrl(uri);
+  }
+  if (options?.gitMcpServer && !/^https:\/\//i.test(String(options.gitMcpServer))) {
+    throw new Error('MCP server URL must use https://');
+  }
+}
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -42,7 +58,8 @@ router.post('/add', async (req, res) => {
 
   try {
     const parsedOptions = typeof options === 'string' ? JSON.parse(options) : (options || {});
-    
+    validateConnectionInput(name, string, parsedOptions);
+
     // Clone remote repository first to ensure it's cloned successfully (force clean clone)
     await cloneRemoteRepo(string, parsedOptions, true);
     
@@ -66,7 +83,14 @@ router.post('/update', async (req, res) => {
 
   try {
     const oldConfig = await connectionStore.getConnection(curr_config);
+    if (!oldConfig) {
+      return res.status(404).json({ error: 'Connection profile not found.' });
+    }
     const parsedOptions = typeof options === 'string' ? JSON.parse(options) : (options || {});
+    validateConnectionInput(conn_name, conn_string, parsedOptions);
+    if (curr_config !== conn_name && await connectionStore.getConnection(conn_name)) {
+      return res.status(400).json({ error: `A connection named "${conn_name}" already exists.` });
+    }
     
     // Preserve old credentials if they are masked in the update payload
     if (oldConfig?.options) {
@@ -79,7 +103,6 @@ router.post('/update', async (req, res) => {
     
     // Check if the repository URL, type, or branch has changed, if so validate/clone
     if (
-      !oldConfig ||
       oldConfig.uri !== conn_string ||
       oldConfig.options?.type !== parsedOptions.type ||
       oldConfig.options?.branch !== parsedOptions.branch
@@ -90,11 +113,8 @@ router.post('/update', async (req, res) => {
     // If the name is changed, delete the old one first
     if (curr_config !== conn_name) {
       await connectionStore.deleteConnection(curr_config);
-      // Clean up old cache file if it exists
-      const oldCache = path.join(tempDir, `${curr_config}_cache.json`);
-      if (fs.existsSync(oldCache)) {
-        try { fs.unlinkSync(oldCache); } catch (e) {}
-      }
+      // Clean up old cache (in-memory and on disk)
+      try { clearRepoCache(curr_config); } catch (e) {}
     }
     await connectionStore.saveConnection(conn_name, conn_string, parsedOptions);
     
@@ -117,9 +137,10 @@ router.post('/delete', async (req, res) => {
   try {
     const profile = await connectionStore.getConnection(curr_config);
     if (profile) {
-      const targetPath = resolveRepoPath(profile);
+      try { clearRepoCache(curr_config); } catch (e) {}
+      const targetPath = profile.options?.type === 'local' ? '' : resolveRepoPath(profile);
       // Safety check: Only delete if remote repository AND the folder is inside the tempDir
-      if (profile.options?.type !== 'local' && targetPath.startsWith(tempDir) && fs.existsSync(targetPath)) {
+      if (targetPath && targetPath !== path.resolve(tempDir) && isPathInside(tempDir, targetPath) && fs.existsSync(targetPath)) {
         console.log(`Deleting remote repository cloned folder at: ${targetPath}`);
         try {
           fs.rmSync(targetPath, { recursive: true, force: true });
