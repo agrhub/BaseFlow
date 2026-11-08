@@ -20,6 +20,15 @@ APP_AGENT_MODEL="gemini-3.1-flash-lite"
 GOOGLE_API_KEY="your_google_cloud_agent_api_key"
 GEMINI_CLI_MODEL="gemini-3.5-flash"
 
+# Optional extra chat model providers (leave empty to disable)
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+LLM_PROVIDER="${LLM_PROVIDER:-}"
+EXTRA_ENV_VARS=""
+[ -n "${ANTHROPIC_API_KEY}" ] && EXTRA_ENV_VARS="${EXTRA_ENV_VARS},ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
+[ -n "${OPENAI_API_KEY}" ] && EXTRA_ENV_VARS="${EXTRA_ENV_VARS},OPENAI_API_KEY=${OPENAI_API_KEY}"
+[ -n "${LLM_PROVIDER}" ] && EXTRA_ENV_VARS="${EXTRA_ENV_VARS},LLM_PROVIDER=${LLM_PROVIDER}"
+
 for VAR in APP_PASSWORD APP_ENCRYPTION_KEY APP_SESSION_SECRET; do
   if [[ "${!VAR}" == change_me* ]]; then
     echo "ERROR: ${VAR} is not configured. Export it or edit this script (see comments above)." >&2
@@ -57,6 +66,6 @@ gcloud run deploy ${IMAGE_NAME} \
   --memory=2Gi \
   --add-volume=name=data-vol,type=cloud-storage,bucket=${BUCKET_NAME} \
   --add-volume-mount=volume=data-vol,mount-path=/mnt/storage \
-  --set-env-vars="HOST=0.0.0.0,NODE_ENV=production,CLOUD_RUN=1,DATA_DIR=/mnt/storage/data,TEMP_DIR=/mnt/storage/temp,PASSWORD=${APP_PASSWORD},ENCRYPTION_KEY=${APP_ENCRYPTION_KEY},SESSION_SECRET=${APP_SESSION_SECRET},AGENT_MODEL=${APP_AGENT_MODEL},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_API_KEY=${GOOGLE_API_KEY},GEMINI_CLI_MODEL=${GEMINI_CLI_MODEL}"
+  --set-env-vars="HOST=0.0.0.0,NODE_ENV=production,CLOUD_RUN=1,DATA_DIR=/mnt/storage/data,TEMP_DIR=/mnt/storage/temp,PASSWORD=${APP_PASSWORD},ENCRYPTION_KEY=${APP_ENCRYPTION_KEY},SESSION_SECRET=${APP_SESSION_SECRET},AGENT_MODEL=${APP_AGENT_MODEL},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_API_KEY=${GOOGLE_API_KEY},GEMINI_CLI_MODEL=${GEMINI_CLI_MODEL}${EXTRA_ENV_VARS}"
 
 echo "Deployment complete!"

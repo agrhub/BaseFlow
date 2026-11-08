@@ -10,7 +10,7 @@ BaseFlow is an advanced, interactive codebase visualization and AI-assisted soft
 ### 🧠 Core Capabilities
 - 🔍 **Multi-Language AST Codebase Parser**: Traverses files recursively to construct structural models using the official `typescript` compiler API for TypeScript/JavaScript/Vue, and regex-based parsers for Python, Java, and C#.
 - 🗺️ **Interactive 2D Mindmaps**: Renders classes, modules, inheritance (`extends`), interface implementations (`implements`), and dependency usages in a clean, hierarchical force-directed graph layout.
-- 🤖 **Autonomous AI Architect Agent**: Integrates Google's Agent Development Kit (`@google/adk`) with Gemini 3. The agent has **16 tools** to inspect code, navigate the UI, highlight mindmap nodes, write files, and interact with DevOps platforms.
+- 🤖 **Autonomous AI Architect Agent**: Integrates Google's Agent Development Kit (`@google/adk`) with a choice of **Gemini, Claude or OpenAI** models (switchable in the chat). The agent has **16 tools** to inspect code, navigate the UI, highlight mindmap nodes, write files, and interact with DevOps platforms.
 - 🏗️ **AI Architecture Diagrams**: Auto-generates system architecture and class interaction diagrams using Mermaid.js.
 - 📄 **Document Q&A**: Analyzes markdown documents in your repository and answers questions in context.
 
@@ -129,7 +129,7 @@ graph TD
    - **Element Plus**: Responsive UI library powering forms, layouts, drawers, and notifications.
    - **G6 Graph** : Graph visualization engine. It provides basic capabilities for graph visualization and analysis such as drawing, layout, analysis, interaction
 3. **Tests & CI**:
-   - Backend security unit tests in [backend/test/](backend/test/) (`npm test`), run with type checks and the frontend build on every push/PR via [GitHub Actions](.github/workflows/ci.yml).
+   - Backend unit tests in [backend/test/](backend/test/) (`npm test`): security, per-session agent isolation, and the Claude/OpenAI adapters driving a real ADK agent with mocked SDK clients, run with type checks and the frontend build on every push/PR via [GitHub Actions](.github/workflows/ci.yml).
 
 ---
 
@@ -189,6 +189,30 @@ graph TD
 npm test            # backend unit tests (path containment, URL validation, encryption, rate limiting)
 npm run typecheck   # backend tsc + frontend vue-tsc
 ```
+
+---
+
+## 🧠 Chat Model Providers
+
+The assistant runs on **Gemini**, **Claude** (Anthropic) or **OpenAI**. Every provider whose key is configured appears in the model picker at the top of the chat sidebar; the choice is remembered per browser. All three share the same agent, the 16 tools, GitHub/GitLab MCP and per-session state — Claude and OpenAI are plugged into ADK through model adapters in [backend/src/llm/](backend/src/llm/).
+
+| Variable | Default | Description |
+|---|---|---|
+| `LLM_PROVIDER` | first configured | Default provider for the chat and for text generation (README, class and document analysis, diagrams): `gemini`, `anthropic` or `openai` |
+| `GOOGLE_API_KEY` | – | Gemini (or Vertex AI via `GOOGLE_GENAI_USE_VERTEXAI`) |
+| `AGENT_MODEL` | `gemini-3.1-flash-lite` | Gemini model |
+| `ANTHROPIC_API_KEY` | – | Claude |
+| `ANTHROPIC_MODEL` | `claude-opus-5-5` | Claude model |
+| `ANTHROPIC_EFFORT` | `medium` | `low` / `medium` / `high` / `xhigh` / `max` — higher effort is more thorough and costs more tokens |
+| `ANTHROPIC_SERVER_FALLBACK` | on | Server-side refusal fallback (`fallbacks: "default"`) for models that support it; set `off` if a proxy rejects it |
+| `OPENAI_API_KEY` | – | OpenAI |
+| `OPENAI_MODEL` | `gpt-5.5` | OpenAI model |
+| `OPENAI_BASE_URL` | – | Any OpenAI-compatible endpoint |
+| `OPENAI_REASONING_EFFORT` | – | Optional `reasoning_effort` for reasoning models |
+
+Notes:
+- Claude requests stream with prompt caching on the system prompt and tools, keep thinking blocks unchanged across tool calls, and never run a tool call that was cut off (`max_tokens`) or refused.
+- **Playbook execution** (`execute_playbook_with_gemini_cli`) always uses the Gemini CLI, so it still needs Gemini credentials.
 
 ---
 
