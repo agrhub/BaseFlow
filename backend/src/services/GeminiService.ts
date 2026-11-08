@@ -1,4 +1,9 @@
 import dotenv from 'dotenv';
+import type { BaseLlm, LlmRequest } from '@google/adk';
+import { AnthropicLlm } from '../llm/anthropic_llm';
+import { OpenAiLlm } from '../llm/openai_llm';
+import { defaultLlmProvider, isLlmProviderConfigured } from '../llm/providers';
+import { toContents } from '../llm/schema';
 const { GoogleGenAI } = require('@google/genai');
 
 dotenv.config();
@@ -96,11 +101,46 @@ export class GeminiService {
     return GeminiService.instance;
   }
 
+  /** True when the default text-generation provider has credentials. */
+  isConfigured(): boolean {
+    return isLlmProviderConfigured(defaultLlmProvider());
+  }
+
+  /**
+   * Text generation through Claude / OpenAI (selected by LLM_PROVIDER), reusing the
+   * agent adapters without tools.
+   */
+  private async generateWithAdapter(llm: BaseLlm, prompt: string | any[], systemInstruction?: string): Promise<string> {
+    const request: LlmRequest = {
+      contents: toContents(prompt),
+      config: systemInstruction ? { systemInstruction } : {},
+      liveConnectConfig: {},
+      toolsDict: {}
+    };
+    let text = '';
+    for await (const response of llm.generateContentAsync(request, false)) {
+      text += (response.content?.parts || []).map(p => p.text || '').join('');
+    }
+    return text;
+  }
+
   /**
    * Generates content using the configured model.
    * Runs inside the concurrency queue and uses exponential backoff retries.
    */
   async generateContent(prompt: string | any[], systemInstruction?: string, responseMimeType?: string): Promise<string> {
+    const provider = defaultLlmProvider();
+    if (provider !== 'gemini') {
+      // Claude / OpenAI SDKs retry rate limits themselves; keep the queue for pacing
+      const jsonOnly = responseMimeType === 'application/json'
+        ? 'Respond with a single valid JSON value only - no prose and no code fences.'
+        : '';
+      const llm = provider === 'anthropic'
+        ? new AnthropicLlm({ extraSystem: jsonOnly })
+        : new OpenAiLlm({ extraSystem: jsonOnly });
+      return this.requestQueue.enqueue(() => this.generateWithAdapter(llm, prompt, systemInstruction));
+    }
+
     return this.requestQueue.enqueue(async () => {
       return callWithRetry(async () => {
         try {

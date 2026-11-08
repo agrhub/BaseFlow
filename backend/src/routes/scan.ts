@@ -478,11 +478,9 @@ router.post('/:conn/class-analysis', async (req, res) => {
       return res.status(404).json({ error: `Class or File ${className} not found.` });
     }
 
-    const useVertex = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
-    const apiKey = process.env.GOOGLE_API_KEY || '';
-    if (!apiKey && !useVertex) {
+    if (!geminiService.isConfigured()) {
       return res.json({
-        analysis: 'No Gemini API Key configured in backend environment. Please set GOOGLE_API_KEY in the .env file to enable structural analysis.'
+        analysis: 'No LLM API key configured in backend environment. Please set GOOGLE_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY in the .env file to enable structural analysis.'
       });
     }
 

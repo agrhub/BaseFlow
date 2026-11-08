@@ -1046,12 +1046,10 @@ export async function generateArchitectureDiagrams(conn: string, repoPath: strin
   })).slice(0, 80);
 
 
-  const useVertex = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
-  const apiKey = process.env.GOOGLE_API_KEY || '';
-  if (!apiKey && !useVertex) {
+  if (!geminiService.isConfigured()) {
     return {
       architecture: `graph TD\n  subgraph Project [${conn}]\n    A[Src Files] --> B[AST Parser]\n  end\n  style Project fill:#1e1e3f,stroke:#6f7ad3`,
-      classInteraction: `graph TD\n  ClassA[No API Key] --> ClassB[Configure GOOGLE_API_KEY]`
+      classInteraction: `graph TD\n  ClassA[No API Key] --> ClassB[Configure an LLM API key]`
     };
   }
 
