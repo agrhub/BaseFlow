@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { FunctionTool } from '@google/adk';
 import { getSessionScan, getSessionConnection, pushAction, sessionIdOf, getModifiedFiles } from './types';
 import { executePlaybookWorkflow } from '../../utils/playbook';
-import { getDevOpsInfo } from '../../routes/helpers';
+import { getDevOpsInfo } from '../../services/repo/gitProviders';
 import { activeStreams } from '../agent';
 import { resolveInside } from '../../utils/security';
 

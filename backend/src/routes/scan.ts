@@ -22,7 +22,7 @@ import {
   resolveFilePathWithFallback,
   updateCacheWithParsedFile,
   cacheFileName
-} from './helpers';
+} from '../services/repo';
 import { isPathInside, assertLocalPathAllowed, assertValidRepoUrl, remoteRepoDirName, getSecurityConfig } from '../utils/security';
 import { geminiService } from '../services/GeminiService';
 import { getClassAnalysisPrompt } from '../prompts/prompts';
