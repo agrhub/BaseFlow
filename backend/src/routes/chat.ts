@@ -7,7 +7,7 @@ import {
   getChatHistory, 
   clearAgentSession 
 } from '../agent/agent';
-import { getDevOpsInfo } from './helpers';
+import { getDevOpsInfo, getOrScanRepo } from './helpers';
 
 const router = express.Router();
 const runnerCache = new Map<string, any>();
@@ -21,13 +21,35 @@ function cacheRunner(sessionId: string, value: any) {
   runnerCache.set(sessionId, value);
   while (runnerCache.size > MAX_CACHED_RUNNERS) {
     const oldestKey = runnerCache.keys().next().value as string;
+    const evicted = runnerCache.get(oldestKey);
     runnerCache.delete(oldestKey);
+    // Also drop the evicted session's history and agent state
+    clearAgentSession(evicted?.runner, oldestKey).catch(() => {});
   }
 }
 
 // Never keep raw credentials in cache keys
 function hashConfig(parts: string[]): string {
   return crypto.createHash('sha256').update(parts.join('\u0000')).digest('hex');
+}
+
+// Agent sessions are namespaced by the browser's login session so one user cannot
+// read or drive another user's agent session by guessing its client-side id.
+function scopedSessionId(req: any, clientSessionId: string): string {
+  const owner = crypto.createHash('sha256').update(String(req.sessionID || 'anonymous')).digest('hex').substring(0, 16);
+  return `${owner}:${clientSessionId}`;
+}
+
+// Resolve the scanned repository for the chat's connection (bound to the agent session)
+async function loadScan(connectionName: string | undefined) {
+  if (!connectionName) return null;
+  try {
+    const { repoPath, classes } = await getOrScanRepo(connectionName);
+    return { repoPath, classes };
+  } catch (err: any) {
+    console.warn(`[Chat] Could not load repository for connection ${connectionName}:`, err.message || err);
+    return null;
+  }
 }
 
 function validateChatInput(message: unknown, sessionId: unknown): string | null {
@@ -39,11 +61,12 @@ function validateChatInput(message: unknown, sessionId: unknown): string | null 
 
 // 1. Endpoint to chat with the agent
 router.post('/chat', async (req: any, res: any) => {
-  const { message, sessionId, connectionName } = req.body;
-  const inputError = validateChatInput(message, sessionId);
+  const { message, connectionName } = req.body;
+  const inputError = validateChatInput(message, req.body.sessionId);
   if (inputError) {
     return res.status(400).json({ error: inputError });
   }
+  const sessionId = scopedSessionId(req, req.body.sessionId);
   
   let effectiveApiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
   let effectiveGitToken = '';
@@ -97,7 +120,7 @@ router.post('/chat', async (req: any, res: any) => {
       tab: uiContext.tab || '',
       connection: connectionName || '',
       activeItem: uiContext.activeItem || ''
-    });
+    }, undefined, await loadScan(connectionName));
 
     return res.json({
       reply: result.reply,
@@ -122,11 +145,12 @@ router.post('/chat', async (req: any, res: any) => {
 
 // 1.5 Endpoint to chat with the agent (SSE Streaming)
 router.post('/chat/stream', async (req: any, res: any) => {
-  const { message, sessionId, connectionName } = req.body;
-  const inputError = validateChatInput(message, sessionId);
+  const { message, connectionName } = req.body;
+  const inputError = validateChatInput(message, req.body.sessionId);
   if (inputError) {
     return res.status(400).json({ error: inputError });
   }
+  const sessionId = scopedSessionId(req, req.body.sessionId);
   
   let effectiveApiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
   let effectiveGitToken = '';
@@ -188,7 +212,7 @@ router.post('/chat/stream', async (req: any, res: any) => {
       tab: uiContext.tab || '',
       connection: connectionName || '',
       activeItem: uiContext.activeItem || ''
-    }, onStream);
+    }, onStream, await loadScan(connectionName));
 
     if (streamedBytes === 0 && result.reply) {
       if (result.reply.startsWith('⚠️')) {
@@ -213,14 +237,22 @@ router.post('/chat/stream', async (req: any, res: any) => {
 
 // 2. Get chat history for the current session
 router.get('/agent/history', (req: any, res: any) => {
-  const sessionId = req.session?.id || 'default';
+  const clientId = req.query.sessionId;
+  if (clientId !== undefined && (typeof clientId !== 'string' || !SESSION_ID_RE.test(clientId))) {
+    return res.status(400).json({ error: 'Invalid sessionId.' });
+  }
+  const sessionId = clientId ? scopedSessionId(req, clientId) : (req.session?.id || 'default');
   const history = getChatHistory(sessionId);
   res.json({ history });
 });
 
 // 3. Clear the agent session and history
 router.delete('/agent/session', async (req: any, res: any) => {
-  const sessionId = req.session?.id || 'default';
+  const clientId = req.query.sessionId;
+  if (clientId !== undefined && (typeof clientId !== 'string' || !SESSION_ID_RE.test(clientId))) {
+    return res.status(400).json({ error: 'Invalid sessionId.' });
+  }
+  const sessionId = clientId ? scopedSessionId(req, clientId) : (req.session?.id || 'default');
   const cached = runnerCache.get(sessionId);
   if (cached) {
     await clearAgentSession(cached.runner, sessionId);
