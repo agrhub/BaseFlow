@@ -10,7 +10,7 @@ BaseFlow is an advanced, interactive codebase visualization and AI-assisted soft
 ### 🧠 Core Capabilities
 - 🔍 **Multi-Language AST Codebase Parser**: Traverses files recursively to construct structural models using the official `typescript` compiler API for TypeScript/JavaScript/Vue, and regex-based parsers for Python, Java, and C#.
 - 🗺️ **Interactive 2D Mindmaps**: Renders classes, modules, inheritance (`extends`), interface implementations (`implements`), and dependency usages in a clean, hierarchical force-directed graph layout.
-- 🤖 **Autonomous AI Architect Agent**: Integrates Google's Agent Development Kit (`@google/adk`) with Gemini 3. The agent has **11 tools** to inspect code, navigate the UI, highlight mindmap nodes, write files, and interact with DevOps platforms.
+- 🤖 **Autonomous AI Architect Agent**: Integrates Google's Agent Development Kit (`@google/adk`) with Gemini 3. The agent has **16 tools** to inspect code, navigate the UI, highlight mindmap nodes, write files, and interact with DevOps platforms.
 - 🏗️ **AI Architecture Diagrams**: Auto-generates system architecture and class interaction diagrams using Mermaid.js.
 - 📄 **Document Q&A**: Analyzes markdown documents in your repository and answers questions in context.
 
@@ -128,8 +128,8 @@ graph TD
    - **Pinia**: Core state engine managing active repositories, connection profiles, and authentication states.
    - **Element Plus**: Responsive UI library powering forms, layouts, drawers, and notifications.
    - **G6 Graph** : Graph visualization engine. It provides basic capabilities for graph visualization and analysis such as drawing, layout, analysis, interaction
-3. **E2E Tests** ([tests/](tests/)):
-   - Automated user flows validated through headed Playwright scripts.
+3. **Tests & CI**:
+   - Backend security unit tests in [backend/test/](backend/test/) (`npm test`), run with type checks and the frontend build on every push/PR via [GitHub Actions](.github/workflows/ci.yml).
 
 ---
 
@@ -152,7 +152,10 @@ graph TD
 3. Create a `.env` file inside the `backend/` folder:
    ```env
    PORT=5000
-   PASSWORD=admin
+   PASSWORD=change_me_strong_password
+   # openssl rand -hex 32 (required in production, keep ENCRYPTION_KEY stable)
+   ENCRYPTION_KEY=
+   SESSION_SECRET=
    GOOGLE_API_KEY=your_google_agent_api_key_here
    AGENT_MODEL=gemini-3.1-flash-lite
    GOOGLE_GENAI_USE_VERTEXAI=1
@@ -182,23 +185,31 @@ graph TD
 
 ## 🧪 Running Automated Tests
 
-E2E UI flows are managed by Playwright inside the [tests/](tests/) directory.
+```bash
+npm test            # backend unit tests (path containment, URL validation, encryption, rate limiting)
+npm run typecheck   # backend tsc + frontend vue-tsc
+```
 
-To run the automated tests locally:
-1. Ensure both your frontend (port 5173) and backend (port 5000) dev servers are running.
-2. Navigate to the tests directory:
-   ```bash
-   cd tests
-   ```
-3. Install the testing dependencies:
-   ```bash
-   npm install
-   ```
-4. Run the test suite:
-   ```bash
-   npm run test
-   ```
-This will launch a headed Chromium instance, log in with `admin`, create a connection profile, perform toggle interactions, and output test reports alongside page screenshots.
+---
+
+## 🔐 Security Configuration
+
+| Variable | Required in production | Description |
+|---|---|---|
+| `PASSWORD` | ✅ | Login password (≥ 8 chars, not `admin`). Login is rate-limited (10 failures / 15 min / IP). |
+| `SESSION_SECRET` | ✅ | ≥ 32 random chars (`openssl rand -hex 32`). |
+| `ENCRYPTION_KEY` | ✅ | ≥ 32 chars, **keep stable** — Git URLs and tokens are encrypted at rest with AES-256-GCM. Data written by older versions is migrated automatically. |
+| `CORS_ORIGINS` | – | Extra origins allowed to call the API with cookies. Same-origin needs nothing. |
+| `ALLOWED_LOCAL_ROOTS` | – | Folders "local" connections may use. Unset ⇒ any folder in development, **disabled** in production. |
+
+With `NODE_ENV=production` (the default in the Docker image) the server **refuses to start** with missing or default secrets. Other safeguards:
+
+- Every file access (API and agent tools) is confined to the repository workspace, symlinks included; the agent cannot write to `.git/`, `.github/workflows/` or `.gitlab-ci.yml`.
+- External commands run without a shell (`execFile`), so file names and URLs cannot inject commands.
+- Gemini CLI runs with a minimal environment that never contains the server secrets or Git tokens. It still runs with auto-approval on repository content, so run BaseFlow only for repositories and issues you trust, ideally in an isolated container.
+- Markdown from repositories, issues and the LLM is rendered without raw HTML, and Mermaid uses `securityLevel: 'strict'` (XSS protection).
+- MCP tokens are passed through environment variables, not command-line arguments.
+- Agent state (scanned repository, pending UI actions, modified files) is isolated per chat session; each chat session is tied to the login session and to its own connection, so the agent cannot be steered into another repository.
 
 ---
 
@@ -216,13 +227,13 @@ BaseFlow is optimized to deploy to **Google Cloud Run** in a single consolidated
 
 ### Deploying
 Open the deploy script matching your operating system inside the project root:
-- **Windows (Command Prompt)**: Run [deploy-cloud-run.cmd](deploy-cloud-run.cmd)
-- **Unix / macOS**: Run [deploy-cloud-run.sh](deploy-cloud-run.sh)
+- **Windows (Command Prompt)**: Run [deploy_cloud_run.cmd](deploy_cloud_run.cmd)
+- **Unix / macOS**: Run [deploy_cloud_run.sh](deploy_cloud_run.sh)
 
 The deployment script executes a remote container build via Cloud Build utilizing the multi-stage [Dockerfile](Dockerfile) and registers the service at port 5000. 
 
 > [!IMPORTANT]
-> Once deployed, configure the **Environment Variables** in the Google Cloud Run panel for `GOOGLE_API_KEY`, `PASSWORD`, and `AGENT_MODEL` to enable the AI Architect features.
+> Before deploying, set `APP_PASSWORD`, `APP_ENCRYPTION_KEY` and `APP_SESSION_SECRET` (export them or edit the top of the script) — the script aborts otherwise. Also configure `GOOGLE_API_KEY` and `AGENT_MODEL` to enable the AI Architect features.
 
 ## 👤 Developer
 
