@@ -56,9 +56,7 @@ export function ensureGeminiCliPatched(): void {
   const userProfile = process.env.USERPROFILE || process.env.HOMEPATH || 'C:\\Users';
   const typicalRoots = [
     path.join(userProfile, 'AppData', 'Roaming', 'npm', 'node_modules'),
-    path.join(userProfile, 'AppData', 'Local', 'pnpm', 'node_modules'),
-    path.join('D:', 'Tools', 'nvm-noinstall', 'v20.19.5', 'node_modules'),
-    path.join('D:', 'Tools', 'nvm-noinstall', 'nodejs', 'node_modules')
+    path.join(userProfile, 'AppData', 'Local', 'pnpm', 'node_modules')
   ];
 
   for (const root of typicalRoots) {

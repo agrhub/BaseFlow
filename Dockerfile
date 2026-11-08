@@ -49,6 +49,8 @@ ENV GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
 # Expose default backend Express port (Cloud Run will override with $PORT env var)
 EXPOSE 5000
 ENV PORT=5000
+# Production mode enforces secure configuration (PASSWORD, SESSION_SECRET, ENCRYPTION_KEY)
+ENV NODE_ENV=production
 
 # Start Express application serving both API and frontend
 CMD ["node", "dist/server.js"]

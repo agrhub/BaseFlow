@@ -1,6 +1,6 @@
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
-import { encrypt, decrypt } from '../utils/crypto';
+import { encrypt, decrypt, isEncrypted } from '../utils/crypto';
 import path from 'path';
 import fs from 'fs';
 
@@ -14,6 +14,26 @@ export interface GitConnectionInfo {
   uri: string;
   options?: any;
   createdAt?: string;
+}
+
+/**
+ * Options hold credentials (gitToken, gitUsername…), so the whole JSON blob is
+ * encrypted at rest. Legacy rows stored as plain JSON are still readable and
+ * get encrypted on the next save (or by the startup migration below).
+ */
+function parseOptions(raw: string | null | undefined): any {
+  if (!raw) return {};
+  try {
+    const json = isEncrypted(raw) ? decrypt(raw) : raw;
+    return JSON.parse(json || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+function serializeOptions(options: any): string {
+  const obj = typeof options === 'string' ? parseOptions(options) : (options || {});
+  return encrypt(JSON.stringify(obj));
 }
 
 export class ConnectionStore {
@@ -47,10 +67,31 @@ export class ConnectionStore {
             createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
           )
         `);
+        await this.migrateLegacyRows(db);
         return db;
       });
     }
     return this.dbPromise;
+  }
+
+  /**
+   * Re-encrypt rows written with older formats (plain-text options / CBC URIs).
+   */
+  private async migrateLegacyRows(db: Database): Promise<void> {
+    try {
+      const rows = await db.all<any[]>('SELECT id, uri, options FROM connections');
+      for (const row of rows) {
+        const needsOptions = row.options && !String(row.options).startsWith('v2:');
+        const needsUri = row.uri && !String(row.uri).startsWith('v2:');
+        if (!needsOptions && !needsUri) continue;
+        const uri = decrypt(row.uri);
+        const options = parseOptions(row.options);
+        if (!uri) continue; // cannot decrypt — leave untouched
+        await db.run('UPDATE connections SET uri = ?, options = ? WHERE id = ?', encrypt(uri), serializeOptions(options), row.id);
+      }
+    } catch (e: any) {
+      console.warn('[ConnectionStore] Credential migration skipped:', e.message || e);
+    }
   }
 
   /**
@@ -60,12 +101,7 @@ export class ConnectionStore {
     const db = await this.getDb();
     const rows = await db.all<any[]>('SELECT * FROM connections ORDER BY id DESC');
     return rows.map(row => {
-      let parsedOptions = {};
-      try {
-        parsedOptions = JSON.parse(row.options || '{}');
-      } catch (e) {
-        parsedOptions = {};
-      }
+      const parsedOptions = parseOptions(row.options);
       return {
         id: row.id,
         name: row.name,
@@ -82,7 +118,7 @@ export class ConnectionStore {
   async saveConnection(name: string, uri: string, options: any = {}): Promise<GitConnectionInfo> {
     const db = await this.getDb();
     const encryptedUri = encrypt(uri);
-    const optionsStr = typeof options === 'string' ? options : JSON.stringify(options || {});
+    const optionsStr = serializeOptions(options);
 
     // Check if name already exists
     const existing = await db.get('SELECT id FROM connections WHERE name = ?', name);
@@ -114,12 +150,7 @@ export class ConnectionStore {
 
     if (!row) return null;
 
-    let parsedOptions = {};
-    try {
-      parsedOptions = JSON.parse(row.options || '{}');
-    } catch (e) {
-      parsedOptions = {};
-    }
+    const parsedOptions = parseOptions(row.options);
 
     return {
       id: row.id,

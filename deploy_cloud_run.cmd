@@ -10,11 +10,19 @@ SET BUCKET_NAME=baseflow-data-bucket
 SET SERVICE_ACCOUNT=%PROJECT_ID%-compute@developer.gserviceaccount.com
 
 REM --- Application Environment Variables ---
-SET APP_PASSWORD=admin
-SET APP_ENCRYPTION_KEY=your_encryption_key_32_characters_here!
+REM SECURITY: the server refuses to start in production with weak/default secrets.
+REM Generate each secret ONCE (e.g. openssl rand -hex 32) and keep it stable across deploys:
+REM changing ENCRYPTION_KEY makes stored Git tokens unreadable.
+IF NOT DEFINED APP_PASSWORD SET APP_PASSWORD=change_me_strong_password
+IF NOT DEFINED APP_ENCRYPTION_KEY SET APP_ENCRYPTION_KEY=change_me_run_openssl_rand_hex_32
+IF NOT DEFINED APP_SESSION_SECRET SET APP_SESSION_SECRET=change_me_run_openssl_rand_hex_32
 SET APP_AGENT_MODEL=gemini-3.1-flash-lite
 SET GOOGLE_API_KEY=your_google_cloud_agent_api_key
 SET GEMINI_CLI_MODEL=gemini-3.5-flash
+
+IF "%APP_PASSWORD:~0,9%"=="change_me" GOTO :missing_secret
+IF "%APP_ENCRYPTION_KEY:~0,9%"=="change_me" GOTO :missing_secret
+IF "%APP_SESSION_SECRET:~0,9%"=="change_me" GOTO :missing_secret
 
 echo Enabling required Google Cloud APIs...
 call gcloud services enable cloudscheduler.googleapis.com run.googleapis.com iam.googleapis.com storage.googleapis.com artifactregistry.googleapis.com --project=%PROJECT_ID% --quiet
@@ -44,6 +52,11 @@ call gcloud run deploy %IMAGE_NAME% ^
   --memory=2Gi ^
   --add-volume=name=data-vol,type=cloud-storage,bucket=%BUCKET_NAME% ^
   --add-volume-mount=volume=data-vol,mount-path=/mnt/storage ^
-  --set-env-vars="HOST=0.0.0.0,NODE_ENV=production,CLOUD_RUN=1,DATA_DIR=/mnt/storage/data,TEMP_DIR=/mnt/storage/temp,PASSWORD=%APP_PASSWORD%,ENCRYPTION_KEY=%APP_ENCRYPTION_KEY%,AGENT_MODEL=%APP_AGENT_MODEL%,GOOGLE_CLOUD_PROJECT=%PROJECT_ID%,GOOGLE_CLOUD_LOCATION=global,GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_API_KEY=%GOOGLE_API_KEY%,GEMINI_CLI_MODEL=%GEMINI_CLI_MODEL%"
+  --set-env-vars="HOST=0.0.0.0,NODE_ENV=production,CLOUD_RUN=1,DATA_DIR=/mnt/storage/data,TEMP_DIR=/mnt/storage/temp,PASSWORD=%APP_PASSWORD%,ENCRYPTION_KEY=%APP_ENCRYPTION_KEY%,SESSION_SECRET=%APP_SESSION_SECRET%,AGENT_MODEL=%APP_AGENT_MODEL%,GOOGLE_CLOUD_PROJECT=%PROJECT_ID%,GOOGLE_CLOUD_LOCATION=global,GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_API_KEY=%GOOGLE_API_KEY%,GEMINI_CLI_MODEL=%GEMINI_CLI_MODEL%"
 
 echo Deployment complete!
+GOTO :eof
+
+:missing_secret
+echo ERROR: APP_PASSWORD, APP_ENCRYPTION_KEY and APP_SESSION_SECRET must be configured (see comments at the top of this script).
+exit /b 1
