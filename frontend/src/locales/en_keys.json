@@ -1392,6 +1392,18 @@
     "value": "Local Folder"
   },
   {
+    "key": "Chat model",
+    "value": "Chat model"
+  },
+  {
+    "key": "Assistant Active",
+    "value": "Assistant Active"
+  },
+  {
+    "key": "Switched chat model to {model}",
+    "value": "Switched chat model to {model}"
+  },
+  {
     "key": "Local folders are disabled on this server. Ask an administrator to set ALLOWED_LOCAL_ROOTS.",
     "value": "Local folders are disabled on this server. Ask an administrator to set ALLOWED_LOCAL_ROOTS."
   },

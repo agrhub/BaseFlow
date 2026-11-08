@@ -1,22 +1,33 @@
-import { LlmAgent, FunctionTool, MCPToolset, InMemoryRunner } from '@google/adk';
+import { LlmAgent, FunctionTool, MCPToolset, Runner, InMemorySessionService, BaseLlm } from '@google/adk';
 import { rateLimitCallback, beforeTool, afterTool } from './shared_libraries/callbacks';
 import { getAgentInstruction } from '../prompts/prompts';
+import { createAgentModel, LlmProviderId } from '../llm/providers';
 import { allTools, drainActions, bindAgentSession, forgetAgentSession, ScanResult } from "./tools";
 
 // Setup Agent and Runner Builder
 interface AgentConfig {
-  apiKey: string;
+  /** Gemini API key (only used by the Gemini provider) */
+  apiKey?: string;
+  /** Chat model provider: gemini (default), anthropic or openai */
+  llmProvider?: LlmProviderId;
+  /** Explicit model instance (tests) — overrides llmProvider */
+  model?: string | BaseLlm;
   gitToken?: string;
   repoInfo?: string;
   gitMcpServer?: string;
   provider?: string;
 }
 
-export function createAgentRunner(config: AgentConfig) {
-  // Set Gemini API Key for ADK
-  process.env.GEMINI_API_KEY = config.apiKey;
+const sharedSessionService = new InMemorySessionService();
 
-  const modelName = process.env.AGENT_MODEL || 'gemini-3.1-flash-lite';
+export function createAgentRunner(config: AgentConfig) {
+  const llmProvider: LlmProviderId = config.llmProvider || 'gemini';
+  // Set Gemini API Key for ADK's built-in Gemini model
+  if (llmProvider === 'gemini' && config.apiKey) {
+    process.env.GEMINI_API_KEY = config.apiKey;
+  }
+
+  const model = config.model || createAgentModel(llmProvider);
 
   const tools: any[] = [
     ...allTools
@@ -130,7 +141,7 @@ export function createAgentRunner(config: AgentConfig) {
   const agent = new LlmAgent({
     name: 'class_mindmap_agent',
     description: 'An expert software architect agent that helps analyze repository structures, classes, codebases, suggest refactoring, optimizations, tests, DevOps health, and interact with the class mindmap.',
-    model: modelName,
+    model,
     beforeToolCallback: beforeTool,
     afterToolCallback: afterTool,
     beforeModelCallback: rateLimitCallback,
@@ -142,10 +153,13 @@ export function createAgentRunner(config: AgentConfig) {
     tools
   });
 
-  // Create InMemoryRunner to manage conversation sessions
-  const runner = new InMemoryRunner({
+  // All runners share one session store, so a chat keeps its history when a new runner is
+  // created for it (switching the model provider, connection or credentials). Sessions are
+  // keyed by the scoped chat session id and removed by clearAgentSession.
+  const runner = new Runner({
     agent,
-    appName: 'baseflow-assistant'
+    appName: 'baseflow-assistant',
+    sessionService: sharedSessionService
   });
 
   return runner;
