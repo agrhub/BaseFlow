@@ -662,7 +662,8 @@ const handleRetry = (idx: number) => {
 
 const handleClearChat = async () => {
   try {
-    await axios.delete('/api/agent/session');
+    // Free the server-side agent runner/session bound to this chat
+    await axios.delete('/api/agent/session', { params: { sessionId: sessionId.value } });
     messages.value = [];
     sessionId.value = Math.random().toString(36).substring(2, 15);
     currentSuggestions.value = [];

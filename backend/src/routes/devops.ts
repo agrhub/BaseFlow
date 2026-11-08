@@ -12,7 +12,7 @@ import {
 } from './helpers';
 import * as fs from 'fs';
 import * as path from 'path';
-import { modifiedFiles } from '../agent/tools/types';
+import { getModifiedFiles, clearModifiedFiles } from '../agent/tools/types';
 import { runPlaybookCli, commitToGitHub, executePlaybookWorkflow, resolveGitHubDefaultBranch, resolveGitLabDefaultBranch } from '../utils/playbook';
 import { resolveInside, isPathInside } from '../utils/security';
 
@@ -481,6 +481,7 @@ router.post('/:conn/devops/auto-create-mr', async (req, res) => {
     const filesToCommit: { path: string; content: string }[] = [];
     
     // Check if we tracked modified files
+    const modifiedFiles = getModifiedFiles(repoPath);
     if (modifiedFiles.size > 0) {
       for (const filePath of modifiedFiles) {
         let fullPath: string;
@@ -551,7 +552,7 @@ router.post('/:conn/devops/auto-create-mr', async (req, res) => {
       }
       
       const prData = await prResponse.json() as any;
-      modifiedFiles.clear(); // Clear tracked files after successful PR creation
+      clearModifiedFiles(repoPath); // Clear tracked files after successful PR creation
       res.json({ success: true, mrUrl: prData.html_url });
       
     } else if (devops.provider === 'gitlab') {
@@ -620,7 +621,7 @@ router.post('/:conn/devops/auto-create-mr', async (req, res) => {
       }
       
       const mrData = await mrResponse.json() as any;
-      modifiedFiles.clear(); // Clear tracked files after successful MR creation
+      clearModifiedFiles(repoPath); // Clear tracked files after successful MR creation
       res.json({ success: true, mrUrl: mrData.web_url });
     } else {
       res.status(400).json({ error: 'Unsupported provider' });
