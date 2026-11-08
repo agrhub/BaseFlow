@@ -1,7 +1,7 @@
 import { LlmAgent, FunctionTool, MCPToolset, InMemoryRunner } from '@google/adk';
 import { rateLimitCallback, beforeTool, afterTool } from './shared_libraries/callbacks';
 import { getAgentInstruction } from '../prompts/prompts';
-import { allTools, clearPendingActions  } from "./tools";
+import { allTools, drainActions, bindAgentSession, forgetAgentSession, ScanResult } from "./tools";
 
 // Setup Agent and Runner Builder
 interface AgentConfig {
@@ -170,7 +170,8 @@ export async function chatWithAgent(
   sessionId: string,
   message: string,
   uiContext?: { tab?: string; connection?: string; activeItem?: string },
-  onStream?: (textChunk: string) => void
+  onStream?: (textChunk: string) => void,
+  scan?: ScanResult | null
 ): Promise<{
   reply: string;
   suggestions?: string[];
@@ -180,6 +181,9 @@ export async function chatWithAgent(
   if (onStream) {
     activeStreams.set(sessionId, onStream);
   }
+  // Bind this chat session to its own connection / repository (tools look it up via ToolContext)
+  bindAgentSession(sessionId, uiContext?.connection || '', scan || null);
+  drainActions(sessionId); // discard stale actions from an aborted previous run
   try {
     // Ensure session exists
     const existingSession = await (runner as any).sessionService.getSession({
@@ -293,7 +297,7 @@ export async function chatWithAgent(
   }
 
   // Collect pending actions accumulated by tool executions during this run
-  const actions = clearPendingActions();
+  const actions = drainActions(sessionId);
 
   // Merge navigate from tag into actions array for unified frontend handling
   if (navigate) {
@@ -326,6 +330,7 @@ export async function clearAgentSession(runner: any, sessionId: string): Promise
       sessionId
     });
     clearChatHistory(sessionId);
+    forgetAgentSession(sessionId);
     console.log(`[Agent] Cleared session: ${sessionId}`);
   } catch (err) {
     console.error(`[Agent] Failed to clear session ${sessionId}:`, err);
