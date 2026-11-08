@@ -2,7 +2,7 @@ import { spawn, execSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { resolveCachePath } from '../routes/helpers';
-import { resolveInside } from './security';
+import { resolveInside, buildSandboxEnv } from './security';
 
 export interface RunPlaybookOptions {
   repoPath: string;
@@ -21,8 +21,13 @@ export function runPlaybookCli(options: RunPlaybookOptions) {
   const useVertex = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
   const hasServiceAccount = !!process.env.GOOGLE_APPLICATION_CREDENTIALS || !!process.env.CLOUD_RUN;
 
-  // Build subprocess env — start from current process env
-  const env: Record<string, string> = { ...(process.env as Record<string, string>) };
+  // Build a minimal subprocess env. The CLI runs with auto-approval (-y) on untrusted
+  // repository content, so server secrets (PASSWORD, ENCRYPTION_KEY, SESSION_SECRET,
+  // Git tokens…) must never be inherited.
+  const env: Record<string, string> = buildSandboxEnv({
+    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY
+  });
 
   if (useVertex) {
     const resolvedLocation = process.env.GOOGLE_CLOUD_LOCATION || 'global';
