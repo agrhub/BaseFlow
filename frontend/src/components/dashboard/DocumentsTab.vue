@@ -176,7 +176,7 @@ import { FolderOpened, Refresh } from '@element-plus/icons-vue';
 import MarkdownIt from 'markdown-it';
 
 
-const md = new MarkdownIt({ html: true, linkify: true });
+const md = new MarkdownIt({ html: false, linkify: true }) // raw HTML disabled: content comes from repos, issues and LLM output (XSS);
 
 const props = defineProps<{
   documentList: string[];

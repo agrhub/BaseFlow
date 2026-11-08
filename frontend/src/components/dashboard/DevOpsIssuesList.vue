@@ -110,7 +110,7 @@ import axios from 'axios';
 
 import MarkdownIt from 'markdown-it';
 
-const md = new MarkdownIt({ html: true, linkify: true });
+const md = new MarkdownIt({ html: false, linkify: true }) // raw HTML disabled: content comes from repos, issues and LLM output (XSS);
 
 defineProps<{
   provider: string;

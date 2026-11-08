@@ -6,7 +6,7 @@ import mermaid from 'mermaid';
 import axios from 'axios';
 import router from '../router';
 
-const md = new MarkdownIt({ html: true, linkify: true });
+const md = new MarkdownIt({ html: false, linkify: true }) // raw HTML disabled: content comes from repos, issues and LLM output (XSS);
 
 export function useChatRenderer() {
   // Helper lookup to find matching files from sidebarList
@@ -269,7 +269,8 @@ export function useChatRenderer() {
 
       return rendered;
     } catch (e) {
-      return text;
+      // Never inject unrendered text as HTML
+      return md.utils.escapeHtml(text);
     }
   };
 
@@ -289,7 +290,7 @@ export function useChatRenderer() {
         mermaid.initialize({
           startOnLoad: false,
           theme: isDark ? 'dark' : 'default',
-          securityLevel: 'loose'
+          securityLevel: 'strict'
         });
         const { svg } = await mermaid.render(id + '-svg', code);
         el.innerHTML = `<div class="rendered-mermaid-svg">${svg}</div>`;

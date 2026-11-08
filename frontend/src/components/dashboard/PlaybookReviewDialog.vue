@@ -58,7 +58,10 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { store } from '../../stores';
-import { marked } from 'marked';
+import MarkdownIt from 'markdown-it';
+
+// Raw HTML disabled: playbooks are LLM-generated from untrusted issue content (XSS)
+const md = new MarkdownIt({ html: false, linkify: true });
 import { Document } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import axios from 'axios';
@@ -107,7 +110,7 @@ watch(visible, (newVal) => {
 
 const renderMarkdown = (text: string) => {
   if (!text) return '';
-  return marked.parse(text);
+  return md.render(text);
 };
 
 const startEdit = () => {

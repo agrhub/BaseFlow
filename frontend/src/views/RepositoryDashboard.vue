@@ -482,7 +482,7 @@ const renderDiagrams = async (data: any) => {
     mermaid.initialize({
       startOnLoad: false,
       theme: isDark ? 'dark' : 'default',
-      securityLevel: 'loose',
+      securityLevel: 'strict',
       suppressErrorRendering: true
     });
   } catch (e) {
