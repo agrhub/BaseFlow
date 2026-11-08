@@ -225,13 +225,11 @@ router.post('/:conn/documents/analyze', async (req, res) => {
       }
     }
 
-    const useVertex = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
-    const apiKey = process.env.GOOGLE_API_KEY || '';
-    if (!apiKey && !useVertex) {
+    if (!geminiService.isConfigured()) {
       return res.json({
-        summary: 'No Gemini API Key found.',
+        summary: 'No LLM API key found.',
         insights: ['Unable to analyze without API key.'],
-        suggestions: ['Please configure GOOGLE_API_KEY in the .env file.']
+        suggestions: ['Please configure GOOGLE_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY in the .env file.']
       });
     }
 
@@ -267,9 +265,7 @@ router.post('/:conn/documents/generate-skill', async (req, res) => {
   }
   try {
     const { repoPath } = await getOrScanRepo(conn);
-    const useVertex = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
-    const apiKey = process.env.GOOGLE_API_KEY || '';
-    if (!apiKey && !useVertex) {
+    if (!geminiService.isConfigured()) {
       return res.status(400).json({ error: 'API Key not configured' });
     }
 
@@ -304,9 +300,7 @@ router.post('/:conn/documents/chat', async (req, res) => {
     return res.status(400).json({ error: 'query is required' });
   }
   try {
-    const useVertex = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
-    const apiKey = process.env.GOOGLE_API_KEY || '';
-    if (!apiKey && !useVertex) {
+    if (!geminiService.isConfigured()) {
       return res.json({ reply: 'API key not configured.' });
     }
 

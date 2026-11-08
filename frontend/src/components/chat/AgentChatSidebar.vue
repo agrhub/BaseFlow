@@ -22,7 +22,27 @@
             <h3>{{ store.t('BaseFlow Assistant') }}</h3>
             <span class="status-tag">
               <span class="pulse-dot"></span>
-              {{ store.t('Gemini Active') }}
+              <el-select
+                v-if="llmProviders.length > 1"
+                v-model="llmProvider"
+                size="small"
+                class="provider-select"
+                popper-class="provider-select-popper"
+                :title="store.t('Chat model')"
+                :disabled="thinking"
+                @change="onProviderChange"
+              >
+                <el-option
+                  v-for="p in llmProviders"
+                  :key="p.id"
+                  :label="p.label"
+                  :value="p.id"
+                >
+                  <span>{{ p.label }}</span>
+                  <span class="provider-model">{{ p.model }}</span>
+                </el-option>
+              </el-select>
+              <span v-else>{{ activeProviderLabel }}</span>
             </span>
           </div>
           <div class="header-actions">
@@ -126,6 +146,49 @@ const inputMsg = ref('');
 const thinking = ref(false);
 const msgContainer = ref<HTMLElement | null>(null);
 const sessionId = ref('');
+
+// --- Chat session id (kept per browser tab so a reload restores the conversation) ---
+const SESSION_STORAGE_KEY = 'baseflow.chat.sessionId';
+const newSessionId = () => {
+  const id = Math.random().toString(36).substring(2, 15);
+  try { sessionStorage.setItem(SESSION_STORAGE_KEY, id); } catch (e) { /* storage unavailable */ }
+  return id;
+};
+const restoreSessionId = () => {
+  try {
+    const saved = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (saved && /^[A-Za-z0-9_.:-]{1,128}$/.test(saved)) return saved;
+  } catch (e) { /* storage unavailable */ }
+  return newSessionId();
+};
+
+// --- Chat model provider (Gemini / Claude / OpenAI) ---
+interface LlmProviderInfo { id: string; label: string; model: string; configured: boolean }
+const PROVIDER_STORAGE_KEY = 'baseflow.chat.llmProvider';
+const llmProviders = ref<LlmProviderInfo[]>([]);
+const llmProvider = ref('');
+const activeProviderLabel = computed(() => {
+  const p = llmProviders.value.find(x => x.id === llmProvider.value);
+  return p ? `${p.label} · ${p.model}` : store.t('Assistant Active');
+});
+
+const loadLlmProviders = async () => {
+  try {
+    const res = await axios.get('/api/llm/providers');
+    llmProviders.value = (res.data.providers || []).filter((p: LlmProviderInfo) => p.configured);
+    let saved = '';
+    try { saved = localStorage.getItem(PROVIDER_STORAGE_KEY) || ''; } catch (e) { /* storage unavailable */ }
+    llmProvider.value = llmProviders.value.some(p => p.id === saved) ? saved : (res.data.default || '');
+  } catch (e) {
+    llmProviders.value = [];
+  }
+};
+
+const onProviderChange = (value: string) => {
+  try { localStorage.setItem(PROVIDER_STORAGE_KEY, value); } catch (e) { /* storage unavailable */ }
+  const p = llmProviders.value.find(x => x.id === value);
+  if (p) ElMessage.success(store.t('Switched chat model to {model}', { model: `${p.label} (${p.model})` }));
+};
 
 // @mention state
 const showMentionList = ref(false);
@@ -324,7 +387,7 @@ const showThinkingRow = computed(() => {
 // --- Chat history persistence ---
 const loadChatHistory = async () => {
   try {
-    const res = await axios.get('/api/agent/history');
+    const res = await axios.get('/api/agent/history', { params: { sessionId: sessionId.value } });
     messages.value = (res.data.history || []).map((h: any) => ({
       role: h.role,
       content: h.content
@@ -336,8 +399,9 @@ const loadChatHistory = async () => {
 };
 
 onMounted(async () => {
-  sessionId.value = Math.random().toString(36).substring(2, 15);
-  await loadChatHistory();
+  // Reuse this browser's chat session so a page reload restores the conversation
+  sessionId.value = restoreSessionId();
+  await Promise.all([loadChatHistory(), loadLlmProviders()]);
   renderVisualBlocks(scrollBottom);
 });
 
@@ -428,6 +492,7 @@ const sendChat = async (userText: string) => {
         message: userText,
         sessionId: sessionId.value,
         connectionName: store.activeConnection,
+        ...(llmProvider.value ? { llmProvider: llmProvider.value } : {}),
         uiContext: {
           tab: store.activeTab,
           activeItem: store.activeItem
@@ -665,7 +730,7 @@ const handleClearChat = async () => {
     // Free the server-side agent runner/session bound to this chat
     await axios.delete('/api/agent/session', { params: { sessionId: sessionId.value } });
     messages.value = [];
-    sessionId.value = Math.random().toString(36).substring(2, 15);
+    sessionId.value = newSessionId();
     currentSuggestions.value = [];
     ElMessage.success(store.t('Chat history cleared.'));
   } catch (e) {
@@ -837,6 +902,10 @@ const handleBlur = () => {
 
 .header-actions { display: flex; gap: 6px; }
 
+.provider-select { width: 112px; }
+.provider-select :deep(.el-select__wrapper) { min-height: 22px; padding: 0 8px; font-size: 12px; }
+.provider-model { float: right; margin-left: 12px; font-size: 11px; color: var(--el-text-color-secondary); }
+
 /* ---- Message list ---- */
 .chat-logs-container {
   flex: 1;
@@ -916,4 +985,9 @@ const handleBlur = () => {
   font-size: 16px;
   flex-shrink: 0;
 }
+</style>
+
+<style>
+/* The chat sidebar sits at z-index 9999; keep the teleported model dropdown above it */
+.provider-select-popper { z-index: 10001 !important; }
 </style>

@@ -8,6 +8,7 @@ import {
   clearAgentSession 
 } from '../agent/agent';
 import { getDevOpsInfo, getOrScanRepo } from './helpers';
+import { defaultLlmProvider, isLlmProviderConfigured, isLlmProviderId, listLlmProviders, LlmProviderId } from '../llm/providers';
 
 const router = express.Router();
 const runnerCache = new Map<string, any>();
@@ -52,6 +53,16 @@ async function loadScan(connectionName: string | undefined) {
   }
 }
 
+// Chat model provider requested by the client (defaults to the server's default provider)
+function resolveLlmProvider(requested: unknown): { provider?: LlmProviderId; error?: string } {
+  if (requested === undefined || requested === null || requested === '') {
+    return { provider: defaultLlmProvider() };
+  }
+  if (!isLlmProviderId(requested)) return { error: 'Unknown LLM provider.' };
+  if (!isLlmProviderConfigured(requested)) return { error: `The ${requested} provider is not configured on this server.` };
+  return { provider: requested };
+}
+
 function validateChatInput(message: unknown, sessionId: unknown): string | null {
   if (typeof message !== 'string' || !message.trim()) return 'message is required.';
   if (message.length > MAX_MESSAGE_LENGTH) return `message is too long (max ${MAX_MESSAGE_LENGTH} characters).`;
@@ -93,17 +104,22 @@ router.post('/chat', async (req: any, res: any) => {
     }
   }
 
-  if (!message || !sessionId || !effectiveApiKey) {
-    return res.status(400).json({ error: 'message, sessionId, and apiKey are required.' });
+  const { provider: llmProvider, error: providerError } = resolveLlmProvider(req.body.llmProvider);
+  if (!llmProvider || providerError) {
+    return res.status(400).json({ error: providerError || 'No LLM provider is configured.' });
+  }
+  if (!isLlmProviderConfigured(llmProvider)) {
+    return res.status(400).json({ error: 'No LLM provider is configured. Set GOOGLE_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY.' });
   }
 
   try {
     let cached = runnerCache.get(sessionId);
-    const configHash = hashConfig([connectionName || '', effectiveApiKey || '', effectiveGitToken || '', effectiveGitMcpServer || '', effectiveProvider || '']);
+    const configHash = hashConfig([llmProvider, connectionName || '', effectiveApiKey || '', effectiveGitToken || '', effectiveGitMcpServer || '', effectiveProvider || '']);
     if (!cached || cached.configHash !== configHash) {
       console.log(`Creating new agent runner for session ${sessionId} (configHash changed or new session)...`);
       const runner = createAgentRunner({
         apiKey: effectiveApiKey,
+        llmProvider,
         gitToken: effectiveGitToken,
         gitMcpServer: effectiveGitMcpServer,
         repoInfo: repoInfoText,
@@ -175,8 +191,12 @@ router.post('/chat/stream', async (req: any, res: any) => {
     }
   }
 
-  if (!message || !sessionId || !effectiveApiKey) {
-    return res.status(400).json({ error: 'message, sessionId, and apiKey are required.' });
+  const { provider: llmProvider, error: providerError } = resolveLlmProvider(req.body.llmProvider);
+  if (!llmProvider || providerError) {
+    return res.status(400).json({ error: providerError || 'No LLM provider is configured.' });
+  }
+  if (!isLlmProviderConfigured(llmProvider)) {
+    return res.status(400).json({ error: 'No LLM provider is configured. Set GOOGLE_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY.' });
   }
 
   // Setup SSE headers
@@ -186,10 +206,11 @@ router.post('/chat/stream', async (req: any, res: any) => {
 
   try {
     let cached = runnerCache.get(sessionId);
-    const configHash = hashConfig([connectionName || '', effectiveApiKey || '', effectiveGitToken || '', effectiveGitMcpServer || '', effectiveProvider || '']);
+    const configHash = hashConfig([llmProvider, connectionName || '', effectiveApiKey || '', effectiveGitToken || '', effectiveGitMcpServer || '', effectiveProvider || '']);
     if (!cached || cached.configHash !== configHash) {
       const runner = createAgentRunner({
         apiKey: effectiveApiKey,
+        llmProvider,
         gitToken: effectiveGitToken,
         gitMcpServer: effectiveGitMcpServer,
         repoInfo: repoInfoText,
@@ -259,6 +280,11 @@ router.delete('/agent/session', async (req: any, res: any) => {
     runnerCache.delete(sessionId);
   }
   res.json({ msg: 'Session cleared successfully' });
+});
+
+// 4. Available chat model providers (only metadata, never credentials)
+router.get('/llm/providers', (_req: any, res: any) => {
+  res.json({ default: defaultLlmProvider(), providers: listLlmProviders() });
 });
 
 export default router;
