@@ -225,6 +225,7 @@ Notes:
 | `ENCRYPTION_KEY` | ✅ | ≥ 32 chars, **keep stable** — Git URLs and tokens are encrypted at rest with AES-256-GCM. Data written by older versions is migrated automatically. |
 | `CORS_ORIGINS` | – | Extra origins allowed to call the API with cookies. Same-origin needs nothing. |
 | `ALLOWED_LOCAL_ROOTS` | – | Folders "local" connections may use. Unset ⇒ any folder in development, **disabled** in production. |
+| `SESSION_DB_URL` | – | Where agent conversations are stored: `sqlite:///path/agent_sessions.db` (single host) or `postgres://…` (several instances). Unset ⇒ in memory, conversations are lost on restart. |
 
 With `NODE_ENV=production` (the default in the Docker image) the server **refuses to start** with missing or default secrets. Other safeguards:
 
@@ -233,6 +234,7 @@ With `NODE_ENV=production` (the default in the Docker image) the server **refuse
 - Gemini CLI playbooks run with a minimal environment that never contains the server secrets or Git tokens, and in `auto_edit` approval mode: file edits are auto-approved, shell commands and web fetches are not run (`GEMINI_CLI_APPROVAL_MODE=yolo` opts back into auto-approving everything). Edits still come from repository and issue content, so review generated MRs/PRs before merging.
 - Markdown from repositories, issues and the LLM is rendered without raw HTML, and Mermaid uses `securityLevel: 'strict'` (XSS protection).
 - MCP tokens are passed through environment variables, not command-line arguments.
+- Login sessions are HMAC-signed cookies (`httpOnly`, `SameSite=Lax`, `Secure` in production): they survive restarts and work across instances. The signing key is derived from `SESSION_SECRET` and `PASSWORD`, so changing either signs everyone out. Saved chats are tied to a separate signed per-browser cookie (`baseflow.device`, 1 year), so they survive logout, re-login and the login expiry; that cookie grants no access on its own. The 🕘 button in the chat sidebar lists this browser's saved conversations to resume, or starts a new chat.
 - Agent state (scanned repository, pending UI actions, modified files) is isolated per chat session; each chat session is tied to the login session and to its own connection, so the agent cannot be steered into another repository.
 
 ---

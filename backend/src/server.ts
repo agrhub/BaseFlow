@@ -5,7 +5,6 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import session from 'express-session';
 import * as fs from 'fs';
 
 // Import modular routers
@@ -18,6 +17,7 @@ import diagramsRouter from './routes/diagrams';
 import documentsRouter from './routes/documents';
 import { ensureGeminiCliPatched } from './utils/cliInstaller';
 import { getSecurityConfig, isProduction } from './utils/security';
+import { authSessionMiddleware } from './utils/authSession';
 
 // Validate security configuration before doing anything else (throws in production on insecure config)
 let securityConfig: ReturnType<typeof getSecurityConfig>;
@@ -26,13 +26,6 @@ try {
 } catch (err: any) {
   console.error(err.message || err);
   process.exit(1);
-}
-
-// TypeScript session field extension
-declare module 'express-session' {
-  interface SessionData {
-    loggedIn?: boolean | null;
-  }
 }
 
 const app = express();
@@ -73,20 +66,8 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Session setup
-app.use(session({
-  name: 'baseflow.sid',
-  secret: securityConfig.sessionSecret,
-  resave: false,
-  saveUninitialized: false,
-  rolling: true,
-  cookie: {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: isProduction ? 'auto' : false,
-    maxAge: 24 * 60 * 60 * 1000 // 1 day
-  }
-}));
+// Login sessions: HMAC-signed cookie (no server-side state, survives restarts and scale-out)
+app.use(authSessionMiddleware);
 
 // CSRF defence-in-depth: state-changing API calls must come from an allowed origin
 app.use((req, res, next) => {
@@ -113,7 +94,7 @@ const authMiddleware = (req: express.Request, res: express.Response, next: expre
   if (req.method === 'OPTIONS') {
     return next();
   }
-  if (!req.session.loggedIn) {
+  if (!req.auth.loggedIn) {
     // Only guard API endpoints (excluding auth routes)
     if (req.path.startsWith('/api/')) {
       if (req.path.startsWith('/api/auth/')) {

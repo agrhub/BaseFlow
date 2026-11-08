@@ -46,6 +46,40 @@
             </span>
           </div>
           <div class="header-actions">
+            <el-popover
+              v-model:visible="conversationsOpen"
+              placement="bottom-end"
+              :width="300"
+              trigger="click"
+              popper-class="provider-select-popper conversations-popper"
+              @show="loadConversations"
+            >
+              <template #reference>
+                <el-button type="info" circle text bg size="small" :title="store.t('Conversations')" :disabled="thinking">
+                  <span style="font-size: 14px;">🕘</span>
+                </el-button>
+              </template>
+              <div class="conversations-panel">
+                <el-button size="small" type="primary" plain class="new-chat-btn" @click="startNewChat">
+                  ＋ {{ store.t('New chat') }}
+                </el-button>
+                <div v-if="conversationsLoading" class="conversations-empty">…</div>
+                <div v-else-if="!conversations.length" class="conversations-empty">
+                  {{ store.t('No saved conversations yet.') }}
+                </div>
+                <ul v-else class="conversations-list">
+                  <li
+                    v-for="c in conversations"
+                    :key="c.id"
+                    :class="{ active: c.id === sessionId }"
+                    @click="openConversation(c.id)"
+                  >
+                    <span class="conversation-title">{{ c.title }}</span>
+                    <span class="conversation-time">{{ formatConversationTime(c.updatedAt) }}</span>
+                  </li>
+                </ul>
+              </div>
+            </el-popover>
             <el-button
               type="danger" circle text bg size="small"
               :title="store.t('Clear Chat History')"
@@ -154,6 +188,52 @@ const newSessionId = () => {
   try { sessionStorage.setItem(SESSION_STORAGE_KEY, id); } catch (e) { /* storage unavailable */ }
   return id;
 };
+// --- Saved conversations (list / resume / new) ---
+interface ConversationSummary { id: string; title: string; updatedAt: number }
+const conversations = ref<ConversationSummary[]>([]);
+const conversationsOpen = ref(false);
+const conversationsLoading = ref(false);
+
+const loadConversations = async () => {
+  conversationsLoading.value = true;
+  try {
+    const res = await axios.get('/api/agent/conversations');
+    conversations.value = res.data.conversations || [];
+  } catch (e) {
+    conversations.value = [];
+  } finally {
+    conversationsLoading.value = false;
+  }
+};
+
+const useSessionId = (id: string) => {
+  sessionId.value = id;
+  try { sessionStorage.setItem(SESSION_STORAGE_KEY, id); } catch (e) { /* storage unavailable */ }
+};
+
+const openConversation = async (id: string) => {
+  conversationsOpen.value = false;
+  if (id === sessionId.value) return;
+  useSessionId(id);
+  messages.value = [];
+  currentSuggestions.value = [];
+  await loadChatHistory();
+};
+
+const startNewChat = () => {
+  conversationsOpen.value = false;
+  sessionId.value = newSessionId();
+  messages.value = [];
+  currentSuggestions.value = [];
+};
+
+const formatConversationTime = (ms: number) => {
+  if (!ms) return '';
+  const d = new Date(ms);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString();
+};
+
 const restoreSessionId = () => {
   try {
     const saved = sessionStorage.getItem(SESSION_STORAGE_KEY);
@@ -901,6 +981,19 @@ const handleBlur = () => {
 }
 
 .header-actions { display: flex; gap: 6px; }
+
+.conversations-panel { display: flex; flex-direction: column; gap: 8px; }
+.new-chat-btn { width: 100%; }
+.conversations-empty { font-size: 12px; color: var(--el-text-color-secondary); padding: 6px 2px; }
+.conversations-list { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; }
+.conversations-list li {
+  display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+  padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.conversations-list li:hover { background: var(--el-fill-color-light); }
+.conversations-list li.active { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+.conversation-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.conversation-time { flex-shrink: 0; font-size: 11px; color: var(--el-text-color-secondary); }
 
 .provider-select { width: 112px; }
 .provider-select :deep(.el-select__wrapper) { min-height: 22px; padding: 0 8px; font-size: 12px; }

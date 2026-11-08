@@ -5,7 +5,10 @@ import {
   createAgentRunner, 
   chatWithAgent, 
   getChatHistory, 
-  clearAgentSession 
+  clearAgentSession,
+  releaseAgentSession,
+  listConversations,
+  ownerOf
 } from '../agent/agent';
 import { getDevOpsInfo, getOrScanRepo } from './helpers';
 import { defaultLlmProvider, isLlmProviderConfigured, isLlmProviderId, listLlmProviders, LlmProviderId } from '../llm/providers';
@@ -25,7 +28,7 @@ function cacheRunner(sessionId: string, value: any) {
     const evicted = runnerCache.get(oldestKey);
     runnerCache.delete(oldestKey);
     // Also drop the evicted session's history and agent state
-    clearAgentSession(evicted?.runner, oldestKey).catch(() => {});
+    releaseAgentSession(oldestKey).catch(() => {});
   }
 }
 
@@ -34,10 +37,11 @@ function hashConfig(parts: string[]): string {
   return crypto.createHash('sha256').update(parts.join('\u0000')).digest('hex');
 }
 
-// Agent sessions are namespaced by the browser's login session so one user cannot
-// read or drive another user's agent session by guessing its client-side id.
+// Agent sessions are namespaced by the browser's signed device id, so one browser
+// cannot read or drive another's agent session by guessing its client-side id, and
+// saved chats survive logout / re-login and the login expiry.
 function scopedSessionId(req: any, clientSessionId: string): string {
-  const owner = crypto.createHash('sha256').update(String(req.sessionID || 'anonymous')).digest('hex').substring(0, 16);
+  const owner = crypto.createHash('sha256').update(String(req.auth?.deviceId || 'anonymous')).digest('hex').substring(0, 16);
   return `${owner}:${clientSessionId}`;
 }
 
@@ -257,13 +261,13 @@ router.post('/chat/stream', async (req: any, res: any) => {
 });
 
 // 2. Get chat history for the current session
-router.get('/agent/history', (req: any, res: any) => {
+router.get('/agent/history', async (req: any, res: any) => {
   const clientId = req.query.sessionId;
   if (clientId !== undefined && (typeof clientId !== 'string' || !SESSION_ID_RE.test(clientId))) {
     return res.status(400).json({ error: 'Invalid sessionId.' });
   }
-  const sessionId = clientId ? scopedSessionId(req, clientId) : (req.session?.id || 'default');
-  const history = getChatHistory(sessionId);
+  const sessionId = clientId ? scopedSessionId(req, clientId) : scopedSessionId(req, 'default');
+  const history = await getChatHistory(sessionId);
   res.json({ history });
 });
 
@@ -273,13 +277,31 @@ router.delete('/agent/session', async (req: any, res: any) => {
   if (clientId !== undefined && (typeof clientId !== 'string' || !SESSION_ID_RE.test(clientId))) {
     return res.status(400).json({ error: 'Invalid sessionId.' });
   }
-  const sessionId = clientId ? scopedSessionId(req, clientId) : (req.session?.id || 'default');
+  const sessionId = clientId ? scopedSessionId(req, clientId) : scopedSessionId(req, 'default');
   const cached = runnerCache.get(sessionId);
   if (cached) {
     await clearAgentSession(cached.runner, sessionId);
     runnerCache.delete(sessionId);
   }
   res.json({ msg: 'Session cleared successfully' });
+});
+
+// 3b. Conversations of this browser (for the conversation list)
+router.get('/agent/conversations', async (req: any, res: any) => {
+  try {
+    const owner = ownerOf(scopedSessionId(req, 'list'));
+    const conversations = await listConversations(owner);
+    res.json({
+      conversations: conversations.map(c => ({
+        id: c.id.slice(owner.length + 1), // client-side id
+        title: c.title,
+        updatedAt: c.updatedAt
+      }))
+    });
+  } catch (err: any) {
+    console.error('[Chat] Failed to list conversations:', err?.message || err);
+    res.status(500).json({ error: 'Failed to list conversations.' });
+  }
 });
 
 // 4. Available chat model providers (only metadata, never credentials)

@@ -1392,6 +1392,18 @@
     "value": "Local Folder"
   },
   {
+    "key": "Conversations",
+    "value": "Conversations"
+  },
+  {
+    "key": "New chat",
+    "value": "New chat"
+  },
+  {
+    "key": "No saved conversations yet.",
+    "value": "No saved conversations yet."
+  },
+  {
     "key": "Chat model",
     "value": "Chat model"
   },
