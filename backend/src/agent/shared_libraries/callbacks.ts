@@ -13,12 +13,20 @@ const MAX_REQUESTS_PER_WINDOW = 50;
  * Matches SingleBeforeModelCallback signature: (params: { context, request }) => LlmResponse | undefined
  */
 export const rateLimitCallback = async (params: { context: any; request: any }): Promise<any> => {
-  const now = Date.now();
-  while (requestTimestamps.length > 0 && requestTimestamps[0] < now - RATE_LIMIT_WINDOW_MS) {
-    requestTimestamps.shift();
-  }
+  let now = Date.now();
+  const prune = () => {
+    while (requestTimestamps.length > 0 && requestTimestamps[0] < now - RATE_LIMIT_WINDOW_MS) {
+      requestTimestamps.shift();
+    }
+  };
+  prune();
   if (requestTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
-    console.warn('[RateLimit] Too many requests, throttling...');
+    // Actually throttle: wait until the oldest request leaves the window
+    const waitMs = Math.min(requestTimestamps[0] + RATE_LIMIT_WINDOW_MS - now, RATE_LIMIT_WINDOW_MS);
+    console.warn(`[RateLimit] Too many model requests, delaying ${waitMs}ms...`);
+    await new Promise(resolve => setTimeout(resolve, waitMs));
+    now = Date.now();
+    prune();
   }
   requestTimestamps.push(now);
   return undefined; // Proceed normally
