@@ -1,4 +1,4 @@
-import { LlmAgent, FunctionTool, MCPToolset, Runner, InMemorySessionService, BaseLlm } from '@google/adk';
+import { LlmAgent, FunctionTool, MCPToolset, Runner, InMemorySessionService, DatabaseSessionService, BaseLlm, BaseSessionService } from '@google/adk';
 import { rateLimitCallback, beforeTool, afterTool } from './shared_libraries/callbacks';
 import { getAgentInstruction } from '../prompts/prompts';
 import { createAgentModel, LlmProviderId } from '../llm/providers';
@@ -18,7 +18,25 @@ interface AgentConfig {
   provider?: string;
 }
 
-const sharedSessionService = new InMemorySessionService();
+const APP_NAME = 'baseflow-assistant';
+
+/**
+ * Agent session store shared by every runner.
+ * SESSION_DB_URL selects a database (sqlite://<file> for a single host,
+ * postgres://… for several instances); otherwise sessions live in memory and
+ * are lost on restart.
+ */
+function createSessionService(): { service: BaseSessionService; persistent: boolean } {
+  const url = process.env.SESSION_DB_URL || '';
+  if (/^(sqlite|postgres|postgresql|mysql|mariadb|mssql):\/\//.test(url)) {
+    console.log(`[Agent] Using database session store (${url.split('://')[0]})`);
+    return { service: new DatabaseSessionService(url), persistent: true };
+  }
+  if (url) console.warn('[Agent] Ignoring unsupported SESSION_DB_URL; using in-memory sessions.');
+  return { service: new InMemorySessionService(), persistent: false };
+}
+
+const { service: sharedSessionService, persistent: persistentSessions } = createSessionService();
 
 export function createAgentRunner(config: AgentConfig) {
   const llmProvider: LlmProviderId = config.llmProvider || 'gemini';
@@ -158,7 +176,7 @@ export function createAgentRunner(config: AgentConfig) {
   // keyed by the scoped chat session id and removed by clearAgentSession.
   const runner = new Runner({
     agent,
-    appName: 'baseflow-assistant',
+    appName: APP_NAME,
     sessionService: sharedSessionService
   });
 
@@ -170,8 +188,51 @@ const chatHistoryStore: Map<string, Array<{ role: string; content: string }>> = 
 
 export const activeStreams = new Map<string, (chunk: string) => void>();
 
-export function getChatHistory(sessionId: string) {
-  return chatHistoryStore.get(sessionId) || [];
+const UI_CONTEXT_PREFIX = /^\[UI Context \|[^\n]*\]\n/;
+
+/**
+ * Visible chat history. With the in-memory store it is kept in a local cache.
+ * With a persistent store it is always rebuilt from the session events, so it
+ * stays correct after a restart and when several instances serve one chat.
+ */
+export async function getChatHistory(sessionId: string): Promise<Array<{ role: string; content: string }>> {
+  const cached = persistentSessions ? undefined : chatHistoryStore.get(sessionId);
+  if (cached) return cached;
+  try {
+    const session = await sharedSessionService.getSession({ appName: APP_NAME, userId: sessionId, sessionId });
+    if (!session) return [];
+    const history: Array<{ role: string; content: string }> = [];
+    for (const event of session.events || []) {
+      const parts = event.content?.parts || [];
+      const text = parts.filter((p: any) => typeof p.text === 'string' && !p.thought).map((p: any) => p.text).join('');
+      if (!text) continue;
+      if (event.author === 'user') {
+        history.push({ role: 'user', content: text.replace(UI_CONTEXT_PREFIX, '') });
+      } else {
+        const last = history[history.length - 1];
+        if (last && last.role === 'assistant') last.content += text;
+        else history.push({ role: 'assistant', content: text });
+      }
+    }
+    if (!persistentSessions) chatHistoryStore.set(sessionId, history);
+    return history;
+  } catch (err) {
+    console.warn(`[Agent] Could not load history for ${sessionId}:`, err);
+    return [];
+  }
+}
+
+/**
+ * Drop the in-memory state of a chat session (runner cache eviction). With a
+ * persistent store the conversation itself is kept so it can be resumed.
+ */
+export async function releaseAgentSession(sessionId: string): Promise<void> {
+  if (!persistentSessions) {
+    await clearAgentSession(undefined, sessionId);
+    return;
+  }
+  clearChatHistory(sessionId);
+  forgetAgentSession(sessionId);
 }
 
 export function clearChatHistory(sessionId: string) {
@@ -221,9 +282,9 @@ export async function chatWithAgent(
   const userText = `[UI Context | ${tabStr}, ${connStr}, ${itemStr}, ${sessionStr}]\n${message}`;
 
   // Save user message to history
-  const history = chatHistoryStore.get(sessionId) || [];
+  const history = await getChatHistory(sessionId);
   history.push({ role: 'user', content: message });
-  chatHistoryStore.set(sessionId, history);
+  if (!persistentSessions) chatHistoryStore.set(sessionId, history);
 
   let responseMessage = '';
   try {
@@ -320,7 +381,7 @@ export async function chatWithAgent(
 
   // Save assistant response to history
   history.push({ role: 'assistant', content: responseMessage });
-  chatHistoryStore.set(sessionId, history);
+  if (!persistentSessions) chatHistoryStore.set(sessionId, history);
 
   return {
     reply: responseMessage,
@@ -336,10 +397,10 @@ export async function chatWithAgent(
   }
 }
 
-export async function clearAgentSession(runner: any, sessionId: string): Promise<void> {
+export async function clearAgentSession(_runner: unknown, sessionId: string): Promise<void> {
   try {
-    await (runner as any).sessionService.deleteSession({
-      appName: (runner as any).appName,
+    await sharedSessionService.deleteSession({
+      appName: APP_NAME,
       userId: sessionId,
       sessionId
     });

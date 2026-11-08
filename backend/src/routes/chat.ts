@@ -5,7 +5,8 @@ import {
   createAgentRunner, 
   chatWithAgent, 
   getChatHistory, 
-  clearAgentSession 
+  clearAgentSession,
+  releaseAgentSession
 } from '../agent/agent';
 import { getDevOpsInfo, getOrScanRepo } from './helpers';
 import { defaultLlmProvider, isLlmProviderConfigured, isLlmProviderId, listLlmProviders, LlmProviderId } from '../llm/providers';
@@ -25,7 +26,7 @@ function cacheRunner(sessionId: string, value: any) {
     const evicted = runnerCache.get(oldestKey);
     runnerCache.delete(oldestKey);
     // Also drop the evicted session's history and agent state
-    clearAgentSession(evicted?.runner, oldestKey).catch(() => {});
+    releaseAgentSession(oldestKey).catch(() => {});
   }
 }
 
@@ -258,13 +259,13 @@ router.post('/chat/stream', async (req: any, res: any) => {
 });
 
 // 2. Get chat history for the current session
-router.get('/agent/history', (req: any, res: any) => {
+router.get('/agent/history', async (req: any, res: any) => {
   const clientId = req.query.sessionId;
   if (clientId !== undefined && (typeof clientId !== 'string' || !SESSION_ID_RE.test(clientId))) {
     return res.status(400).json({ error: 'Invalid sessionId.' });
   }
   const sessionId = clientId ? scopedSessionId(req, clientId) : scopedSessionId(req, 'default');
-  const history = getChatHistory(sessionId);
+  const history = await getChatHistory(sessionId);
   res.json({ history });
 });
 

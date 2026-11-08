@@ -14,6 +14,8 @@
     "@anthropic-ai/sdk": "^1.6.0",
     "@google/adk": "^1.0.0",
     "@google/gemini-cli": "^0.46.0",
+    "@mikro-orm/postgresql": "^6.6.17",
+    "@mikro-orm/sqlite": "^6.6.17",
     "@types/diff": "^7.0.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
