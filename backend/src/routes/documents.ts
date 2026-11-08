@@ -2,7 +2,7 @@ import express from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
 import { isPathInside, resolveInside, execFileAsync } from '../utils/security';
-import { getOrScanRepo, resolveFilePathWithFallback, parseGitUrl } from './helpers';
+import { getOrScanRepo, resolveFilePathWithFallback, parseGitUrl } from '../services/repo';
 import { parseRepository } from '../utils/parser';
 import { geminiService } from '../services/GeminiService';
 import { getDocAnalysisPrompt, getGenerateSkillPrompt, getDocChatPrompt } from '../prompts/prompts';

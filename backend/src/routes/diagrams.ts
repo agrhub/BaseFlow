@@ -1,7 +1,7 @@
 import express from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
-import { getOrScanRepo, generateArchitectureDiagrams } from './helpers';
+import { getOrScanRepo, generateArchitectureDiagrams } from '../services/repo';
 
 const router = express.Router();
 

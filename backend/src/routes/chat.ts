@@ -10,7 +10,7 @@ import {
   listConversations,
   ownerOf
 } from '../agent/agent';
-import { getDevOpsInfo, getOrScanRepo } from './helpers';
+import { getDevOpsInfo, getOrScanRepo } from '../services/repo';
 import { defaultLlmProvider, isLlmProviderConfigured, isLlmProviderId, listLlmProviders, LlmProviderId } from '../llm/providers';
 
 const router = express.Router();

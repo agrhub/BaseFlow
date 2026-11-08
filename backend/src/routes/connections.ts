@@ -1,6 +1,6 @@
 import express from 'express';
 import { connectionStore } from '../services/ConnectionStore';
-import { cloneRemoteRepo, resolveRepoPath, tempDir, clearRepoCache } from './helpers';
+import { cloneRemoteRepo, resolveRepoPath, tempDir, clearRepoCache } from '../services/repo';
 import { assertValidConnectionName, assertValidRepoUrl, assertLocalPathAllowed, isPathInside } from '../utils/security';
 
 function validateConnectionInput(name: unknown, uri: unknown, options: any) {

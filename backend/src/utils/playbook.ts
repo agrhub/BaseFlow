@@ -1,7 +1,7 @@
 import { spawn, execSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
-import { resolveCachePath } from '../routes/helpers';
+import { resolveCachePath } from '../services/repo/workspace';
 import { resolveInside, buildSandboxEnv } from './security';
 
 export interface RunPlaybookOptions {

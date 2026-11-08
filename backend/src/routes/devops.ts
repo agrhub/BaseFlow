@@ -9,7 +9,7 @@ import {
   fetchPaginatedFromGitHub,
   resolveRepoPath,
   resolveCachePath
-} from './helpers';
+} from '../services/repo';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getModifiedFiles, clearModifiedFiles } from '../agent/tools/types';
