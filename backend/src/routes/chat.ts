@@ -34,10 +34,11 @@ function hashConfig(parts: string[]): string {
   return crypto.createHash('sha256').update(parts.join('\u0000')).digest('hex');
 }
 
-// Agent sessions are namespaced by the browser's login session so one user cannot
-// read or drive another user's agent session by guessing its client-side id.
+// Agent sessions are namespaced by the browser's signed device id, so one browser
+// cannot read or drive another's agent session by guessing its client-side id, and
+// saved chats survive logout / re-login and the login expiry.
 function scopedSessionId(req: any, clientSessionId: string): string {
-  const owner = crypto.createHash('sha256').update(String(req.sessionID || 'anonymous')).digest('hex').substring(0, 16);
+  const owner = crypto.createHash('sha256').update(String(req.auth?.deviceId || 'anonymous')).digest('hex').substring(0, 16);
   return `${owner}:${clientSessionId}`;
 }
 
@@ -262,7 +263,7 @@ router.get('/agent/history', (req: any, res: any) => {
   if (clientId !== undefined && (typeof clientId !== 'string' || !SESSION_ID_RE.test(clientId))) {
     return res.status(400).json({ error: 'Invalid sessionId.' });
   }
-  const sessionId = clientId ? scopedSessionId(req, clientId) : (req.session?.id || 'default');
+  const sessionId = clientId ? scopedSessionId(req, clientId) : scopedSessionId(req, 'default');
   const history = getChatHistory(sessionId);
   res.json({ history });
 });
@@ -273,7 +274,7 @@ router.delete('/agent/session', async (req: any, res: any) => {
   if (clientId !== undefined && (typeof clientId !== 'string' || !SESSION_ID_RE.test(clientId))) {
     return res.status(400).json({ error: 'Invalid sessionId.' });
   }
-  const sessionId = clientId ? scopedSessionId(req, clientId) : (req.session?.id || 'default');
+  const sessionId = clientId ? scopedSessionId(req, clientId) : scopedSessionId(req, 'default');
   const cached = runnerCache.get(sessionId);
   if (cached) {
     await clearAgentSession(cached.runner, sessionId);
