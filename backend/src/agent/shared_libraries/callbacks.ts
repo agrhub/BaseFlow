@@ -7,18 +7,40 @@
 const requestTimestamps: number[] = [];
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 50;
+// Longest silent wait before answering the user with a clear "busy" message instead
+const MAX_THROTTLE_WAIT_MS = 10_000;
+
+export const RATE_LIMIT_MESSAGE =
+  '⚠️ The assistant is handling too many requests right now. Please wait about a minute and try again.';
 
 /**
  * Rate limit callback — prevents hammering the Gemini API.
+ * Short waits are absorbed silently; when the window is full for longer than
+ * MAX_THROTTLE_WAIT_MS the model call is skipped and the user gets an explicit
+ * message instead of a chat that looks frozen.
  * Matches SingleBeforeModelCallback signature: (params: { context, request }) => LlmResponse | undefined
  */
 export const rateLimitCallback = async (params: { context: any; request: any }): Promise<any> => {
-  const now = Date.now();
-  while (requestTimestamps.length > 0 && requestTimestamps[0] < now - RATE_LIMIT_WINDOW_MS) {
-    requestTimestamps.shift();
-  }
+  let now = Date.now();
+  const prune = () => {
+    while (requestTimestamps.length > 0 && requestTimestamps[0] < now - RATE_LIMIT_WINDOW_MS) {
+      requestTimestamps.shift();
+    }
+  };
+  prune();
   if (requestTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
-    console.warn('[RateLimit] Too many requests, throttling...');
+    const waitMs = requestTimestamps[0] + RATE_LIMIT_WINDOW_MS - now;
+    if (waitMs > MAX_THROTTLE_WAIT_MS) {
+      console.warn(`[RateLimit] Window full for another ${waitMs}ms — returning busy message.`);
+      return {
+        content: { role: 'model', parts: [{ text: RATE_LIMIT_MESSAGE }] },
+        turnComplete: true
+      };
+    }
+    console.warn(`[RateLimit] Too many model requests, delaying ${waitMs}ms...`);
+    await new Promise(resolve => setTimeout(resolve, waitMs));
+    now = Date.now();
+    prune();
   }
   requestTimestamps.push(now);
   return undefined; // Proceed normally

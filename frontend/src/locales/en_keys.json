@@ -1392,6 +1392,10 @@
     "value": "Local Folder"
   },
   {
+    "key": "Local folders are disabled on this server. Ask an administrator to set ALLOWED_LOCAL_ROOTS.",
+    "value": "Local folders are disabled on this server. Ask an administrator to set ALLOWED_LOCAL_ROOTS."
+  },
+  {
     "key": "Git Remote URL",
     "value": "Git Remote URL"
   },

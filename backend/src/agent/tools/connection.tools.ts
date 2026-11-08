@@ -3,14 +3,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { z } from 'zod';
 import { FunctionTool } from '@google/adk';
-import { currentScanResult, setCurrentScanResult, pendingActions } from './types';
+import { getSessionScan, pushAction } from './types';
+import { resolveInside } from '../../utils/security';
 
 // Define local tools for the agent with type casting to bypass Zod mismatch warnings
 export const getProjectStructureTool = new FunctionTool({
   name: 'get_project_structure',
   description: 'Returns a summary of the classes, heritage, and dependencies found in the scanned codebase.',
   parameters: z.object({}) as any,
-  execute: (async () => {
+  execute: (async (_args: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
     if (!currentScanResult) {
       return 'No repository has been scanned yet. Please ask the user to enter a repository URL or path and scan it.';
     }
@@ -33,7 +35,8 @@ export const readClassCodeTool = new FunctionTool({
   parameters: z.object({
     className: z.string().describe('The name of the class or file to inspect')
   }) as any,
-  execute: (async ({ className }: any) => {
+  execute: (async ({ className }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
     if (!currentScanResult) {
       return 'No repository has been scanned yet.';
     }
@@ -43,7 +46,7 @@ export const readClassCodeTool = new FunctionTool({
     }
 
     try {
-      const fullPath = path.join(currentScanResult.repoPath, cls.filePath);
+      const fullPath = resolveInside(currentScanResult.repoPath, cls.filePath);
       if (fs.existsSync(fullPath)) {
         const fileContent = fs.readFileSync(fullPath, 'utf-8');
         return `File: ${cls.filePath}\n\n\`\`\`\n${fileContent}\n\`\`\``;
@@ -62,12 +65,13 @@ export const highlightClassTool = new FunctionTool({
   parameters: z.object({
     className: z.string().describe('The name of the class to highlight')
   }) as any,
-  execute: (async ({ className }: any) => {
+  execute: (async ({ className }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
     if (!currentScanResult) return 'No repository scanned.';
     const cls = currentScanResult.classes.find(c => c.name.toLowerCase() === className.toLowerCase());
     if (!cls) return `Class ${className} not found.`;
 
-    pendingActions.push({
+    pushAction(toolContext, {
       type: 'HIGHLIGHT_CLASS',
       payload: { className: cls.name }
     });
@@ -81,7 +85,8 @@ export const analyzeRefactorImpactTool = new FunctionTool({
   parameters: z.object({
     className: z.string().describe('The class to analyze')
   }) as any,
-  execute: (async ({ className }: any) => {
+  execute: (async ({ className }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
     if (!currentScanResult) return 'No repository scanned.';
     const targetCls = currentScanResult.classes.find(c => c.name.toLowerCase() === className.toLowerCase());
     if (!targetCls) return `Class ${className} not found.`;
@@ -123,8 +128,9 @@ export const navigateDashboardTool = new FunctionTool({
     tab: z.enum(['generate', 'mindmap', 'analysis', 'history', 'gitlab', 'architecture', 'documents']).describe('The target tab to display'),
     connectionName: z.string().optional().describe('Optional name of connection profile to switch to')
   }) as any,
-  execute: (async ({ tab, connectionName }: any) => {
-    pendingActions.push({
+  execute: (async ({ tab, connectionName }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
+    pushAction(toolContext, {
       type: 'NAVIGATE',
       payload: { tab, connectionName }
     });
@@ -138,8 +144,9 @@ export const selectMindmapNodeTool = new FunctionTool({
   parameters: z.object({
     nodeName: z.string().describe('The name of the file or class node to inspect')
   }) as any,
-  execute: (async ({ nodeName }: any) => {
-    pendingActions.push({
+  execute: (async ({ nodeName }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
+    pushAction(toolContext, {
       type: 'SELECT_NODE',
       payload: { nodeName }
     });

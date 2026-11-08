@@ -20,8 +20,10 @@ import {
   fetchFromGitLab,
   activeSyncPaths,
   resolveFilePathWithFallback,
-  updateCacheWithParsedFile
+  updateCacheWithParsedFile,
+  cacheFileName
 } from './helpers';
+import { isPathInside, assertLocalPathAllowed, assertValidRepoUrl, remoteRepoDirName, getSecurityConfig } from '../utils/security';
 import { geminiService } from '../services/GeminiService';
 import { getClassAnalysisPrompt } from '../prompts/prompts';
 
@@ -128,9 +130,8 @@ router.get('/:conn/file-content', async (req, res) => {
     const { repoPath } = await getOrScanRepo(conn);
     const { resolvedFilePath, activeRepoRoot } = resolveFilePathWithFallback(repoPath, filePath);
 
-    // Security: prevent path traversal outside repo
-    const relative = path.relative(activeRepoRoot, resolvedFilePath);
-    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    // Security: prevent path traversal (incl. symlinks) outside repo
+    if (!isPathInside(activeRepoRoot, resolvedFilePath)) {
       return res.status(403).json({ error: 'Access denied: path traversal not allowed' });
     }
     if (!fs.existsSync(resolvedFilePath)) {
@@ -214,9 +215,8 @@ router.get('/:conn/file-raw', async (req, res) => {
     const { repoPath } = await getOrScanRepo(conn);
     const { resolvedFilePath, activeRepoRoot } = resolveFilePathWithFallback(repoPath, filePath);
 
-    // Security: prevent path traversal outside repo
-    const relative = path.relative(activeRepoRoot, resolvedFilePath);
-    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    // Security: prevent path traversal (incl. symlinks) outside repo
+    if (!isPathInside(activeRepoRoot, resolvedFilePath)) {
       return res.status(403).json({ error: 'Access denied: path traversal not allowed' });
     }
     if (!fs.existsSync(resolvedFilePath)) {
@@ -543,7 +543,7 @@ router.get('/scan-stream', async (req: any, res: any) => {
 
     if (localPath) {
       sendProgress(1, 4, 'Verifying local folder...');
-      targetPath = path.resolve(localPath);
+      targetPath = assertLocalPathAllowed(localPath);
       if (!fs.existsSync(targetPath)) {
         res.write(`data: ${JSON.stringify({ type: 'error', error: `Local directory does not exist: ${localPath}` })}\n\n`);
         return res.end();
@@ -551,8 +551,8 @@ router.get('/scan-stream', async (req: any, res: any) => {
       sendProgress(2, 4, 'Successfully connected to directory.');
     } else if (repoUrl) {
       sendProgress(1, 4, 'Analyzing Git repository connections...');
-      const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'temp-repo';
-      targetPath = path.join(tempDir, repoName);
+      assertValidRepoUrl(repoUrl);
+      targetPath = path.join(tempDir, remoteRepoDirName(repoUrl));
 
       sendProgress(2, 4, 'Performing ZIP download...');
       if (fs.existsSync(targetPath)) {
@@ -598,7 +598,7 @@ router.get('/scan-stream', async (req: any, res: any) => {
 router.post('/:conn/sync', async (req, res) => {
   const { conn } = req.params;
   try {
-    const cachePath = path.join(tempDir, `${conn}_cache.json`);
+    const cachePath = path.join(tempDir, cacheFileName(conn));
     clearRepoCache(conn);
     const scanData = await getOrScanRepo(conn);
     
@@ -657,7 +657,7 @@ router.post('/:conn/pull', async (req, res) => {
     console.log(`Pulling ZIP updates for ${conn} at ${targetPath}...`);
     clearRepoCache(conn);
     
-    const cachePath = path.join(tempDir, `${conn}_cache.json`);
+    const cachePath = path.join(tempDir, cacheFileName(conn));
     await zipCloneOrPull(profile.uri, targetPath, profile.options, cachePath);
     
     // Perform a fresh scan
@@ -699,34 +699,35 @@ router.post('/:conn/pull', async (req, res) => {
 router.post('/:conn/open-file', async (req, res) => {
   const { conn } = req.params;
   const filePath = req.body.path as string;
+  if (!getSecurityConfig().allowOpenFile) {
+    return res.status(403).json({ error: 'Opening files on the server is disabled in this environment.' });
+  }
   if (!filePath) {
     return res.status(400).json({ error: 'Body param "path" is required' });
   }
   try {
     const { repoPath } = await getOrScanRepo(conn);
     const { resolvedFilePath, activeRepoRoot } = resolveFilePathWithFallback(repoPath, filePath);
-    // Security: prevent path traversal outside repo
-    const relative = path.relative(activeRepoRoot, resolvedFilePath);
-    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    // Security: prevent path traversal (incl. symlinks) outside repo
+    if (!isPathInside(activeRepoRoot, resolvedFilePath)) {
       return res.status(403).json({ error: 'Access denied: path traversal not allowed' });
     }
     if (!fs.existsSync(resolvedFilePath)) {
       return res.status(404).json({ error: `File not found: ${filePath}` });
     }
 
+    // Argument array (no shell) so file names cannot inject commands
     const platform = process.platform;
-    let cmd = '';
-    if (platform === 'win32') {
-      cmd = `start "" "${resolvedFilePath}"`;
-    } else if (platform === 'darwin') {
-      cmd = `open "${resolvedFilePath}"`;
-    } else {
-      cmd = `xdg-open "${resolvedFilePath}"`;
-    }
+    const [cmd, args]: [string, string[]] = platform === 'win32'
+      ? ['explorer.exe', [resolvedFilePath]]
+      : platform === 'darwin'
+        ? ['open', [resolvedFilePath]]
+        : ['xdg-open', [resolvedFilePath]];
 
-    const { exec } = require('child_process');
-    exec(cmd, (error: any) => {
-      if (error) {
+    const { execFile } = require('child_process');
+    execFile(cmd, args, (error: any) => {
+      // explorer.exe returns a non-zero exit code even on success
+      if (error && platform !== 'win32') {
         console.error(`Error opening file ${resolvedFilePath}:`, error);
         return res.status(500).json({ error: `Could not open file: ${error.message}` });
       }

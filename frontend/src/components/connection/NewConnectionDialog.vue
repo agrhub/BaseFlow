@@ -19,15 +19,18 @@
           v-model="connForm.string"
           type="textarea"
           :rows="2"
-          :placeholder="store.t('e.g. C:/Projects/MyProject  or  https://github.com/user/repo.git')"
+          :placeholder="store.localConnectionsAllowed ? store.t('e.g. C:/Projects/MyProject  or  https://github.com/user/repo.git') : 'https://github.com/user/repo.git'"
         />
       </el-form-item>
 
       <el-form-item :label="store.t('Repository Type')">
         <el-radio-group v-model="connForm.type">
-          <el-radio-button value="local">{{ store.t('Local Folder') }}</el-radio-button>
+          <el-radio-button value="local" :disabled="!store.localConnectionsAllowed">{{ store.t('Local Folder') }}</el-radio-button>
           <el-radio-button value="remote">{{ store.t('Git Remote URL') }}</el-radio-button>
         </el-radio-group>
+        <div v-if="!store.localConnectionsAllowed" class="local-disabled-hint">
+          {{ store.t('Local folders are disabled on this server. Ask an administrator to set ALLOWED_LOCAL_ROOTS.') }}
+        </div>
       </el-form-item>
 
       <el-form-item :label="store.t('Default Branch')" v-if="connForm.type === 'remote'">
@@ -86,10 +89,13 @@ const loadingText = computed(() => {
   return store.t('Saving connection details...');
 });
 
+// New connections default to "remote" when the server does not accept local folders
+const defaultType = () => (store.localConnectionsAllowed ? 'local' : 'remote');
+
 const connForm = reactive({
   name: '',
   string: '',
-  type: 'local',
+  type: defaultType(),
   branch: '',
   curr_config: '',
   gitUsername: '',
@@ -112,7 +118,7 @@ watch(() => props.editData, (newVal) => {
     isEditMode.value = false;
     connForm.name = '';
     connForm.string = '';
-    connForm.type = 'local';
+    connForm.type = defaultType();
     connForm.branch = '';
     connForm.curr_config = '';
     connForm.gitUsername = '';
@@ -161,7 +167,7 @@ watch(() => connForm.string, (newVal) => {
                    val.includes('github.com') || 
                    val.includes('gitlab.com');
   if (!isEditMode.value) {
-    connForm.type = isRemote ? 'remote' : 'local';
+    connForm.type = isRemote || !store.localConnectionsAllowed ? 'remote' : 'local';
   }
 
   // Auto-parse credentials from the URL if embedded (https://user:token@host/...)
@@ -222,3 +228,13 @@ const saveConnection = async () => {
   }
 };
 </script>
+
+<style scoped>
+.local-disabled-hint {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--el-text-color-secondary);
+}
+</style>

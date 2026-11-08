@@ -2,6 +2,7 @@ import { spawn, execSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { resolveCachePath } from '../routes/helpers';
+import { resolveInside, buildSandboxEnv } from './security';
 
 export interface RunPlaybookOptions {
   repoPath: string;
@@ -20,8 +21,13 @@ export function runPlaybookCli(options: RunPlaybookOptions) {
   const useVertex = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
   const hasServiceAccount = !!process.env.GOOGLE_APPLICATION_CREDENTIALS || !!process.env.CLOUD_RUN;
 
-  // Build subprocess env — start from current process env
-  const env: Record<string, string> = { ...(process.env as Record<string, string>) };
+  // Build a minimal subprocess env. The CLI runs with auto-approval (-y) on untrusted
+  // repository content, so server secrets (PASSWORD, ENCRYPTION_KEY, SESSION_SECRET,
+  // Git tokens…) must never be inherited.
+  const env: Record<string, string> = buildSandboxEnv({
+    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY
+  });
 
   if (useVertex) {
     const resolvedLocation = process.env.GOOGLE_CLOUD_LOCATION || 'global';
@@ -88,6 +94,15 @@ export function runPlaybookCli(options: RunPlaybookOptions) {
 
   const model = process.env.GEMINI_CLI_MODEL || process.env.AGENT_MODEL || 'gemini-2.5-flash';
 
+  // The CLI works on untrusted repository / issue content. "auto_edit" auto-approves file
+  // edits only: in headless mode, tools that need confirmation (shell commands, web fetch)
+  // are not run, so prompt injection cannot execute commands on the server.
+  // "yolo" (auto-approve everything) is an explicit opt-in.
+  const approvalMode = process.env.GEMINI_CLI_APPROVAL_MODE === 'yolo' ? 'yolo' : 'auto_edit';
+  if (approvalMode === 'yolo') {
+    onData(`[${logLabel}] WARNING: GEMINI_CLI_APPROVAL_MODE=yolo - shell commands are auto-approved.\n`);
+  }
+
   const agentPrompt = `You are a highly capable AI software engineer. You are given a playbook file that lists relevant files/classes and high-level fix instructions.
 Your task is to:
 1. Examine the relevant files/classes listed in the playbook file: "${playbookPath}".
@@ -107,7 +122,8 @@ Do not output any other text after this JSON array.`;
     return spawn('node', [
       geminiJsPath,
       '--skip-trust',
-      '-y',
+      '--approval-mode',
+      approvalMode,
       '-m',
       model,
       '-p',
@@ -120,7 +136,8 @@ Do not output any other text after this JSON array.`;
     onData(`[${logLabel}] gemini.js not found. Spawning 'gemini' CLI in shell mode... (Model: ${model})\n`);
     return spawn('gemini', [
       '--skip-trust',
-      '-y',
+      '--approval-mode',
+      approvalMode,
       '-m',
       model,
       '-p',
@@ -428,8 +445,15 @@ export async function executePlaybookWorkflow(options: PlaybookWorkflowOptions) 
     // Read modified files content from disk
     const filesToCommit: { path: string; content: string }[] = [];
     for (const filePath of modifiedFilePaths) {
-      const fullFilePath = path.join(repoPath, filePath);
-      if (fs.existsSync(fullFilePath)) {
+      let fullFilePath: string;
+      try {
+        // File list comes from LLM output — never allow it to point outside the repo
+        fullFilePath = resolveInside(repoPath, filePath);
+      } catch {
+        console.warn(`[${logLabel}] Ignoring modified file outside the repository: ${filePath}`);
+        continue;
+      }
+      if (fs.existsSync(fullFilePath) && fs.statSync(fullFilePath).isFile()) {
         const content = fs.readFileSync(fullFilePath, 'utf-8');
         filesToCommit.push({ path: filePath, content });
         if (onFileModified) {

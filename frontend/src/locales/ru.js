@@ -347,6 +347,7 @@ export default {
   "e.g. C:/Projects/MyProject  or  https://github.com/user/repo.git": "например C:/Projects/MyProject или https://github.com/user/repo.git",
   "Repository Type": "Тип репозитория",
   "Local Folder": "Локальная папка",
+  "Local folders are disabled on this server. Ask an administrator to set ALLOWED_LOCAL_ROOTS.": "Локальные папки отключены на этом сервере. Попросите администратора задать ALLOWED_LOCAL_ROOTS.",
   "Git Remote URL": "Удаленный URL-адрес Git",
   "Default Branch": "Ветка по умолчанию",
   "e.g. main": "например главный",

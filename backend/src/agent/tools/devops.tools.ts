@@ -2,10 +2,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { z } from 'zod';
 import { FunctionTool } from '@google/adk';
-import { currentScanResult, pendingActions, modifiedFiles } from './types';
+import { getSessionScan, getSessionConnection, pushAction, sessionIdOf, getModifiedFiles } from './types';
 import { executePlaybookWorkflow } from '../../utils/playbook';
 import { getDevOpsInfo } from '../../routes/helpers';
 import { activeStreams } from '../agent';
+import { resolveInside } from '../../utils/security';
+
+// The agent may be steered by prompt injection from repository content / issues:
+// never let it write into VCS metadata or CI configuration.
+function assertWritableWorkspacePath(repoPath: string, fullPath: string) {
+  const rel = path.relative(repoPath, fullPath).replace(/\\/g, '/');
+  const segments = rel.split('/');
+  if (segments.includes('.git') || rel.startsWith('.github/workflows/') || rel === '.gitlab-ci.yml') {
+    throw new Error(`Writing to "${rel}" is not allowed.`);
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // resolve_issue_with_ai
@@ -20,7 +31,8 @@ export const resolveIssueWithAITool = new FunctionTool({
     issueNumber: z.string().describe('Issue number or IID, e.g. "42"'),
     provider: z.enum(['gitlab', 'github']).describe('The VCS provider'),
   }) as any,
-  execute: (async ({ issueTitle, issueDescription, issueNumber, provider }: any) => {
+  execute: (async ({ issueTitle, issueDescription, issueNumber, provider }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
     if (!currentScanResult) {
       return 'No repository is scanned. Ask the user to scan a connection first.';
     }
@@ -70,15 +82,16 @@ export const resolveIssueWithAITool = new FunctionTool({
       `- Code review approved and MR merged.`,
     ].join('\n');
 
-    const filePath = `skills/fix_issue_${issueNumber}.md`;
-    const fullPath = path.join(currentScanResult.repoPath, filePath);
+    const safeIssue = String(issueNumber).replace(/[^A-Za-z0-9_-]/g, '_').substring(0, 40) || 'unknown';
+    const filePath = `skills/fix_issue_${safeIssue}.md`;
+    const fullPath = resolveInside(currentScanResult.repoPath, filePath);
     const parentDir = path.dirname(fullPath);
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true });
     }
     fs.writeFileSync(fullPath, skillContent, 'utf-8');
 
-    pendingActions.push({
+    pushAction(toolContext, {
       type: 'PLAYBOOK_CREATED',
       payload: { filePath, issueNumber, issueTitle, provider },
     });
@@ -104,7 +117,8 @@ export const analyzePipelineFailureTool = new FunctionTool({
     provider: z.enum(['gitlab', 'github']).describe('The VCS provider'),
     jobLog: z.string().optional().describe('Optional: raw job log output or error snippet to analyze'),
   }) as any,
-  execute: (async ({ pipelineId, ref, provider, jobLog }: any) => {
+  execute: (async ({ pipelineId, ref, provider, jobLog }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
     if (!currentScanResult) return 'No repository is scanned.';
 
     const logSnippet = jobLog
@@ -147,7 +161,7 @@ export const analyzePipelineFailureTool = new FunctionTool({
     ].join('\n');
 
     if (relatedClasses.length > 0) {
-      pendingActions.push({
+      pushAction(toolContext, {
         type: 'HIGHLIGHT_CLASS',
         payload: { className: relatedClasses[0] },
       });
@@ -172,7 +186,8 @@ export const generateDevOpsHealthScoreTool = new FunctionTool({
       .describe('Array of recent pipeline/run statuses'),
     provider: z.enum(['gitlab', 'github', 'both']).describe('The VCS provider(s) in use'),
   }) as any,
-  execute: (async ({ openIssues, openMRs, recentPipelines, provider }: any) => {
+  execute: (async ({ openIssues, openMRs, recentPipelines, provider }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
     const pipelines = Array.isArray(recentPipelines) ? recentPipelines : [];
     const totalPipelines = pipelines.length;
     const successfulPipelines = pipelines.filter((p: any) => p.status === 'success').length;
@@ -233,10 +248,16 @@ export const publishSkillToCatalogTool = new FunctionTool({
     provider: z.enum(['github', 'gitlab']).optional().describe('The AI provider (github or gitlab)'),
     catalogUrl: z.string().optional().describe('The deep-link URL to the catalog settings page'),
   }) as any,
-  execute: (async ({ skillFilePath, agentName, provider = 'gitlab', catalogUrl }: any) => {
+  execute: (async ({ skillFilePath, agentName, provider = 'gitlab', catalogUrl }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
     if (!currentScanResult) return 'No active repository. Please scan a connection first.';
 
-    const fullPath = path.join(currentScanResult.repoPath, skillFilePath);
+    let fullPath: string;
+    try {
+      fullPath = resolveInside(currentScanResult.repoPath, skillFilePath);
+    } catch (e: any) {
+      return e.message;
+    }
     if (!fs.existsSync(fullPath)) {
       return `Skill file not found at ${skillFilePath}. Please generate it first using 'resolve_issue_with_ai'.`;
     }
@@ -273,7 +294,7 @@ export const publishSkillToCatalogTool = new FunctionTool({
     const finalCatalogUrl =
       catalogUrl || (isGitHub ? 'https://github.com/settings/copilot' : 'https://gitlab.com/-/user_settings/custom_models');
 
-    pendingActions.push({
+    pushAction(toolContext, {
       type: 'CATALOG_READY',
       payload: { agentName: resolvedAgentName, catalogUrl: finalCatalogUrl, skillFilePath },
     });
@@ -300,8 +321,9 @@ export const createMergeRequestFromWorkspaceTool = new FunctionTool({
     mrTitle: z.string().describe('Title of the merge request'),
     mrDescription: z.string().describe('Description of the merge request'),
   }) as any,
-  execute: (async ({ issueIid, branchName, mrTitle, mrDescription }: any) => {
-    pendingActions.push({
+  execute: (async ({ issueIid, branchName, mrTitle, mrDescription }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
+    pushAction(toolContext, {
       type: 'AUTO_CREATE_MR',
       payload: { issueIid, branchName, mrTitle, mrDescription },
     });
@@ -331,8 +353,9 @@ export const submitMrReviewTool = new FunctionTool({
       )
       .describe('Array of inline comments for specific files'),
   }) as any,
-  execute: (async ({ mrIid, summary, comments }: any) => {
-    pendingActions.push({
+  execute: (async ({ mrIid, summary, comments }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
+    pushAction(toolContext, {
       type: 'SUBMIT_MR_REVIEW',
       payload: { mrIid, summary, comments },
     });
@@ -356,8 +379,9 @@ export const auditSecurityVulnerabilitiesTool = new FunctionTool({
       .describe('An array of class names or file names that contain security vulnerabilities'),
     summary: z.string().describe('A summary of the security audit findings'),
   }) as any,
-  execute: (async ({ vulnerableClasses, summary }: any) => {
-    pendingActions.push({
+  execute: (async ({ vulnerableClasses, summary }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
+    pushAction(toolContext, {
       type: 'HIGHLIGHT_VULNERABILITY',
       payload: { classes: vulnerableClasses, summary },
     });
@@ -376,20 +400,22 @@ export const writeWorkspaceFileTool = new FunctionTool({
     filePath: z.string().describe('Relative file path inside the repository workspace (e.g. "skills/fix_issue.md")'),
     content: z.string().describe('Full content of the file to write'),
   }) as any,
-  execute: (async ({ filePath, content }: any) => {
+  execute: (async ({ filePath, content }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
     if (!currentScanResult) {
       return 'No active repository is scanned to write files to. Ask the user to scan a connection first.';
     }
     try {
-      const fullPath = path.join(currentScanResult.repoPath, filePath);
+      const fullPath = resolveInside(currentScanResult.repoPath, filePath);
+      assertWritableWorkspacePath(currentScanResult.repoPath, fullPath);
       const parentDir = path.dirname(fullPath);
       if (!fs.existsSync(parentDir)) {
         fs.mkdirSync(parentDir, { recursive: true });
       }
       fs.writeFileSync(fullPath, content, 'utf-8');
-      modifiedFiles.add(filePath);
+      getModifiedFiles(currentScanResult.repoPath).add(filePath);
 
-      pendingActions.push({
+      pushAction(toolContext, {
         type: 'PLAYBOOK_CREATED',
         payload: { filePath },
       });
@@ -411,12 +437,13 @@ export const readWorkspaceFileTool = new FunctionTool({
   parameters: z.object({
     filePath: z.string().describe('Relative path of the file to read in the workspace (e.g. "skills/fix_issue_42.md")'),
   }) as any,
-  execute: (async ({ filePath }: any) => {
+  execute: (async ({ filePath }: any, toolContext?: any) => {
+    const currentScanResult = getSessionScan(toolContext);
     if (!currentScanResult) {
       return 'No active repository is scanned. Ask the user to scan a connection first.';
     }
     try {
-      const fullPath = path.join(currentScanResult.repoPath, filePath);
+      const fullPath = resolveInside(currentScanResult.repoPath, filePath);
       if (!fs.existsSync(fullPath)) {
         return `File not found at: ${filePath}`;
       }
@@ -437,16 +464,29 @@ export const executePlaybookWithGeminiTool = new FunctionTool({
   parameters: z.object({
     playbookFilePath: z.string().describe('Relative path of the playbook file in the workspace (e.g. "skills/fix_issue_7875.md")'),
     issueNumber: z.string().describe('The ID of the issue being fixed'),
-    connectionName: z.string().describe('The name of the active connection profile in BaseFlow'),
-    sessionId: z.string().describe('The current chat session ID to stream logs to'),
+    connectionName: z.string().optional().describe('The name of the active connection profile in BaseFlow'),
+    sessionId: z.string().optional().describe('The current chat session ID to stream logs to'),
   }) as any,
-  execute: (async ({ playbookFilePath, issueNumber, connectionName, sessionId }: any) => {
+  execute: (async ({ playbookFilePath, issueNumber, connectionName: requestedConnection }: any, toolContext?: any) => {
+    // Always act on the connection bound to this chat session — never on one named by the model
+    // (which could be steered by prompt injection into pushing to another repository).
+    const sessionId = sessionIdOf(toolContext);
+    const connectionName = getSessionConnection(toolContext) || requestedConnection;
+    if (requestedConnection && connectionName !== requestedConnection) {
+      console.warn(`[execute_playbook] Ignoring connection "${requestedConnection}" requested by the model; using session connection "${connectionName}".`);
+    }
+    const currentScanResult = getSessionScan(toolContext);
     if (!currentScanResult) {
       return 'No repository is scanned. Ask the user to scan a connection first.';
     }
 
     const repoPath = currentScanResult.repoPath;
-    const fullPlaybookPath = path.join(repoPath, playbookFilePath);
+    let fullPlaybookPath: string;
+    try {
+      fullPlaybookPath = resolveInside(repoPath, playbookFilePath);
+    } catch (e: any) {
+      return e.message;
+    }
     if (!fs.existsSync(fullPlaybookPath)) {
       return `Playbook file not found at: ${playbookFilePath}`;
     }
@@ -486,7 +526,7 @@ export const executePlaybookWithGeminiTool = new FunctionTool({
           resultUrl = mrUrl;
         },
         onFileModified: (filePath) => {
-          modifiedFiles.add(filePath);
+          getModifiedFiles(repoPath).add(filePath);
         },
       });
 

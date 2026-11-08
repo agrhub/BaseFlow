@@ -12,8 +12,9 @@ import {
 } from './helpers';
 import * as fs from 'fs';
 import * as path from 'path';
-import { modifiedFiles } from '../agent/tools/types';
+import { getModifiedFiles, clearModifiedFiles } from '../agent/tools/types';
 import { runPlaybookCli, commitToGitHub, executePlaybookWorkflow, resolveGitHubDefaultBranch, resolveGitLabDefaultBranch } from '../utils/playbook';
+import { resolveInside, isPathInside } from '../utils/security';
 
 const router = express.Router();
 
@@ -58,6 +59,10 @@ router.post('/:conn/devops/save-token', async (req, res) => {
     let finalToken = gitToken;
     if (gitToken === '••••••••' && profile.options?.gitToken) {
       finalToken = profile.options.gitToken;
+    }
+
+    if (gitMcpServer && !/^https:\/\//i.test(String(gitMcpServer))) {
+      return res.status(400).json({ error: 'MCP server URL must use https://' });
     }
 
     const updatedOptions = {
@@ -476,10 +481,16 @@ router.post('/:conn/devops/auto-create-mr', async (req, res) => {
     const filesToCommit: { path: string; content: string }[] = [];
     
     // Check if we tracked modified files
+    const modifiedFiles = getModifiedFiles(repoPath);
     if (modifiedFiles.size > 0) {
       for (const filePath of modifiedFiles) {
-        const fullPath = path.join(repoPath, filePath);
-        if (fs.existsSync(fullPath)) {
+        let fullPath: string;
+        try {
+          fullPath = resolveInside(repoPath, filePath);
+        } catch {
+          continue;
+        }
+        if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
           const content = fs.readFileSync(fullPath, 'utf-8');
           filesToCommit.push({ path: filePath, content });
         }
@@ -495,6 +506,7 @@ router.post('/:conn/devops/auto-create-mr', async (req, res) => {
           if (file.endsWith('.md')) {
             const filePath = `skills/${file}`;
             const fullPath = path.join(skillsDir, file);
+            if (!isPathInside(repoPath, fullPath) || !fs.statSync(fullPath).isFile()) continue;
             const content = fs.readFileSync(fullPath, 'utf-8');
             filesToCommit.push({ path: filePath, content });
           }
@@ -540,7 +552,7 @@ router.post('/:conn/devops/auto-create-mr', async (req, res) => {
       }
       
       const prData = await prResponse.json() as any;
-      modifiedFiles.clear(); // Clear tracked files after successful PR creation
+      clearModifiedFiles(repoPath); // Clear tracked files after successful PR creation
       res.json({ success: true, mrUrl: prData.html_url });
       
     } else if (devops.provider === 'gitlab') {
@@ -609,7 +621,7 @@ router.post('/:conn/devops/auto-create-mr', async (req, res) => {
       }
       
       const mrData = await mrResponse.json() as any;
-      modifiedFiles.clear(); // Clear tracked files after successful MR creation
+      clearModifiedFiles(repoPath); // Clear tracked files after successful MR creation
       res.json({ success: true, mrUrl: mrData.web_url });
     } else {
       res.status(400).json({ error: 'Unsupported provider' });
@@ -745,7 +757,13 @@ router.get('/:conn/devops/run-playbook/stream', async (req, res) => {
       return res.end();
     }
 
-    const fullPlaybookPath = path.join(repoPath, playbookPath);
+    let fullPlaybookPath: string;
+    try {
+      fullPlaybookPath = resolveInside(repoPath, String(playbookPath || ''));
+    } catch (e: any) {
+      sendError(e.message);
+      return res.end();
+    }
     if (!fs.existsSync(fullPlaybookPath)) {
       sendError(`Playbook file not found at ${playbookPath}`);
       return res.end();

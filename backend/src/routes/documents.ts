@@ -1,7 +1,7 @@
 import express from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
-import { exec } from 'child_process';
+import { isPathInside, resolveInside, execFileAsync } from '../utils/security';
 import { getOrScanRepo, resolveFilePathWithFallback, parseGitUrl } from './helpers';
 import { parseRepository } from '../utils/parser';
 import { geminiService } from '../services/GeminiService';
@@ -53,7 +53,7 @@ router.get('/:conn/documents/content', async (req, res) => {
   try {
     const { repoPath } = await getOrScanRepo(conn);
     const { resolvedFilePath, activeRepoRoot } = resolveFilePathWithFallback(repoPath, docPath);
-    if (!resolvedFilePath.startsWith(path.resolve(activeRepoRoot))) {
+    if (!isPathInside(activeRepoRoot, resolvedFilePath)) {
       return res.status(403).json({ error: 'Access denied' });
     }
     if (!fs.existsSync(resolvedFilePath)) {
@@ -152,7 +152,7 @@ router.get('/:conn/documents/diff', async (req, res) => {
   try {
     const { repoPath } = await getOrScanRepo(conn);
     const { resolvedFilePath, activeRepoRoot } = resolveFilePathWithFallback(repoPath, docPath);
-    if (!resolvedFilePath.startsWith(path.resolve(activeRepoRoot))) {
+    if (!isPathInside(activeRepoRoot, resolvedFilePath)) {
       return res.status(403).json({ error: 'Access denied' });
     }
     if (!fs.existsSync(resolvedFilePath)) {
@@ -163,23 +163,19 @@ router.get('/:conn/documents/diff', async (req, res) => {
     const hasGit = fs.existsSync(path.join(repoPath, '.git'));
 
     if (hasGit) {
-      exec(`git ls-files --error-unmatch "${relativePath}"`, { cwd: repoPath }, (lsError) => {
-        if (lsError) {
-          // File is untracked, compare with empty file
-          const nullDev = '/dev/null';
-          exec(`git diff --no-index ${nullDev} "${relativePath}"`, { cwd: repoPath }, (diffError, diffStdout) => {
-            res.json({ diff: diffStdout || '' });
-          });
-        } else {
-          // File is tracked, run git diff HEAD
-          exec(`git diff HEAD -- "${relativePath}"`, { cwd: repoPath }, (diffError, diffStdout, diffStderr) => {
-            if (diffError && diffError.code && diffError.code > 1) {
-              return res.status(500).json({ error: diffStderr || diffError.message });
-            }
-            res.json({ diff: diffStdout || '' });
-          });
-        }
-      });
+      // Argument arrays (no shell): file names from the repository cannot inject commands
+      const ls = await execFileAsync('git', ['ls-files', '--error-unmatch', '--', relativePath], { cwd: repoPath });
+      if (ls.code !== 0) {
+        // File is untracked, compare with empty file
+        const diff = await execFileAsync('git', ['diff', '--no-index', '--', '/dev/null', relativePath], { cwd: repoPath });
+        return res.json({ diff: diff.stdout || '' });
+      }
+      // File is tracked, run git diff HEAD
+      const diff = await execFileAsync('git', ['diff', 'HEAD', '--', relativePath], { cwd: repoPath });
+      if (diff.code > 1) {
+        return res.status(500).json({ error: diff.stderr || 'git diff failed' });
+      }
+      return res.json({ diff: diff.stdout || '' });
     } else {
       // No local git repo. Fetch base content from Git API and diff in JS
       const profile = await connectionStore.getConnection(conn);
@@ -346,9 +342,17 @@ router.post('/:conn/documents/content', async (req, res) => {
   }
   try {
     const { repoPath } = await getOrScanRepo(conn);
-    const safePath = path.resolve(path.join(repoPath, docPath));
-    if (!safePath.startsWith(path.resolve(repoPath))) {
+    let safePath: string;
+    try {
+      safePath = resolveInside(repoPath, docPath);
+    } catch {
       return res.status(403).json({ error: 'Access denied' });
+    }
+    if (path.relative(repoPath, safePath).split(/[\\/]/).includes('.git')) {
+      return res.status(403).json({ error: 'Writing inside .git is not allowed' });
+    }
+    if (typeof content !== 'string') {
+      return res.status(400).json({ error: 'content must be a string' });
     }
     const parentDir = path.dirname(safePath);
     if (!fs.existsSync(parentDir)) {
