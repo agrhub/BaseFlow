@@ -35,15 +35,17 @@ export function createAgentRunner(config: AgentConfig) {
           type: 'StdioConnectionParams',
           serverParams: {
             command: 'npx',
+            // Token passed via env var (expanded by mcp-remote) so it never appears in process listings
             args: [
               '-y',
               'mcp-remote',
               mcpEndpoint,
               '--header',
-              `Authorization: token ${config.gitToken}`
+              'Authorization:${BASEFLOW_MCP_AUTH}'
             ],
             env: {
-              PATH: process.env.PATH || ''
+              PATH: process.env.PATH || '',
+              BASEFLOW_MCP_AUTH: `token ${config.gitToken}`
             }
           }
         }, undefined, 'github');
@@ -81,15 +83,17 @@ export function createAgentRunner(config: AgentConfig) {
           type: 'StdioConnectionParams',
           serverParams: {
             command: 'npx',
+            // Token passed via env var (expanded by mcp-remote) so it never appears in process listings
             args: [
               '-y',
               'mcp-remote',
               mcpEndpoint,
               '--header',
-              `PRIVATE-TOKEN: ${config.gitToken}`
+              'PRIVATE-TOKEN:${BASEFLOW_MCP_AUTH}'
             ],
             env: {
-              PATH: process.env.PATH || ''
+              PATH: process.env.PATH || '',
+              BASEFLOW_MCP_AUTH: config.gitToken
             }
           }
         }, undefined, 'gitlab');
