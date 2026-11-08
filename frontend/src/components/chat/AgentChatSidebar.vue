@@ -147,6 +147,21 @@ const thinking = ref(false);
 const msgContainer = ref<HTMLElement | null>(null);
 const sessionId = ref('');
 
+// --- Chat session id (kept per browser tab so a reload restores the conversation) ---
+const SESSION_STORAGE_KEY = 'baseflow.chat.sessionId';
+const newSessionId = () => {
+  const id = Math.random().toString(36).substring(2, 15);
+  try { sessionStorage.setItem(SESSION_STORAGE_KEY, id); } catch (e) { /* storage unavailable */ }
+  return id;
+};
+const restoreSessionId = () => {
+  try {
+    const saved = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (saved && /^[A-Za-z0-9_.:-]{1,128}$/.test(saved)) return saved;
+  } catch (e) { /* storage unavailable */ }
+  return newSessionId();
+};
+
 // --- Chat model provider (Gemini / Claude / OpenAI) ---
 interface LlmProviderInfo { id: string; label: string; model: string; configured: boolean }
 const PROVIDER_STORAGE_KEY = 'baseflow.chat.llmProvider';
@@ -372,7 +387,7 @@ const showThinkingRow = computed(() => {
 // --- Chat history persistence ---
 const loadChatHistory = async () => {
   try {
-    const res = await axios.get('/api/agent/history');
+    const res = await axios.get('/api/agent/history', { params: { sessionId: sessionId.value } });
     messages.value = (res.data.history || []).map((h: any) => ({
       role: h.role,
       content: h.content
@@ -384,7 +399,8 @@ const loadChatHistory = async () => {
 };
 
 onMounted(async () => {
-  sessionId.value = Math.random().toString(36).substring(2, 15);
+  // Reuse this browser's chat session so a page reload restores the conversation
+  sessionId.value = restoreSessionId();
   await Promise.all([loadChatHistory(), loadLlmProviders()]);
   renderVisualBlocks(scrollBottom);
 });
@@ -714,7 +730,7 @@ const handleClearChat = async () => {
     // Free the server-side agent runner/session bound to this chat
     await axios.delete('/api/agent/session', { params: { sessionId: sessionId.value } });
     messages.value = [];
-    sessionId.value = Math.random().toString(36).substring(2, 15);
+    sessionId.value = newSessionId();
     currentSuggestions.value = [];
     ElMessage.success(store.t('Chat history cleared.'));
   } catch (e) {
