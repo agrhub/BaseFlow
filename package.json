@@ -15,7 +15,8 @@
     "build": "npm run build-frontend && npm run build-backend",
     "start": "npm run start --prefix backend",
     "test": "npm run test --prefix backend",
-    "typecheck": "npm run typecheck --prefix backend && npm run typecheck --prefix frontend"
+    "typecheck": "npm run typecheck --prefix backend && npm run typecheck --prefix frontend",
+    "e2e": "npm run build --prefix frontend && npm install --prefix e2e && npm test --prefix e2e"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
