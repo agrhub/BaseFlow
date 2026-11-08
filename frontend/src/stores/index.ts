@@ -18,6 +18,8 @@ export const useAppStore = defineStore('app', {
     activeLocale: 'en',
     loggedIn: false,
     passwordRequired: false,
+    // Whether the server accepts "local folder" connections (disabled in production by default)
+    localConnectionsAllowed: true,
     loading: false,
     theme: 'system',
     activeTab: 'generate',
@@ -77,6 +79,7 @@ export const useAppStore = defineStore('app', {
         const res = await axios.get('/api/auth/status');
         this.loggedIn = res.data.loggedIn;
         this.passwordRequired = res.data.passwordRequired;
+        this.localConnectionsAllowed = res.data.features?.localConnections !== false;
         return res.data;
       } catch (e) {
         console.error('Error fetching auth status:', e);

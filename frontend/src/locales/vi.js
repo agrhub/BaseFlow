@@ -347,6 +347,7 @@ export default {
   "e.g. C:/Projects/MyProject  or  https://github.com/user/repo.git": "ví dụ: C:/Projects/MyProject hoặc https://github.com/user/repo.git",
   "Repository Type": "Loại kho lưu trữ",
   "Local Folder": "Thư mục cục bộ",
+  "Local folders are disabled on this server. Ask an administrator to set ALLOWED_LOCAL_ROOTS.": "Thư mục cục bộ bị tắt trên máy chủ này. Hãy nhờ quản trị viên cấu hình ALLOWED_LOCAL_ROOTS.",
   "Git Remote URL": "URL từ xa Git",
   "Default Branch": "Chi nhánh mặc định",
   "e.g. main": "ví dụ: chính",

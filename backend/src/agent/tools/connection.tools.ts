@@ -4,6 +4,7 @@ import * as path from 'path';
 import { z } from 'zod';
 import { FunctionTool } from '@google/adk';
 import { currentScanResult, setCurrentScanResult, pendingActions } from './types';
+import { resolveInside } from '../../utils/security';
 
 // Define local tools for the agent with type casting to bypass Zod mismatch warnings
 export const getProjectStructureTool = new FunctionTool({
@@ -43,7 +44,7 @@ export const readClassCodeTool = new FunctionTool({
     }
 
     try {
-      const fullPath = path.join(currentScanResult.repoPath, cls.filePath);
+      const fullPath = resolveInside(currentScanResult.repoPath, cls.filePath);
       if (fs.existsSync(fullPath)) {
         const fileContent = fs.readFileSync(fullPath, 'utf-8');
         return `File: ${cls.filePath}\n\n\`\`\`\n${fileContent}\n\`\`\``;

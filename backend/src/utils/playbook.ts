@@ -2,6 +2,7 @@ import { spawn, execSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { resolveCachePath } from '../routes/helpers';
+import { resolveInside } from './security';
 
 export interface RunPlaybookOptions {
   repoPath: string;
@@ -428,8 +429,15 @@ export async function executePlaybookWorkflow(options: PlaybookWorkflowOptions) 
     // Read modified files content from disk
     const filesToCommit: { path: string; content: string }[] = [];
     for (const filePath of modifiedFilePaths) {
-      const fullFilePath = path.join(repoPath, filePath);
-      if (fs.existsSync(fullFilePath)) {
+      let fullFilePath: string;
+      try {
+        // File list comes from LLM output — never allow it to point outside the repo
+        fullFilePath = resolveInside(repoPath, filePath);
+      } catch {
+        console.warn(`[${logLabel}] Ignoring modified file outside the repository: ${filePath}`);
+        continue;
+      }
+      if (fs.existsSync(fullFilePath) && fs.statSync(fullFilePath).isFile()) {
         const content = fs.readFileSync(fullFilePath, 'utf-8');
         filesToCommit.push({ path: filePath, content });
         if (onFileModified) {

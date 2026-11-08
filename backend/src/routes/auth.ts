@@ -10,7 +10,11 @@ const loginLimiter = new RateLimiter(10, 15 * 60 * 1000);
 router.get('/status', (req, res) => {
   res.status(200).json({
     passwordRequired: true,
-    loggedIn: !!req.session.loggedIn
+    loggedIn: !!req.session.loggedIn,
+    // Lets the UI hide options the server will reject
+    features: {
+      localConnections: getSecurityConfig().allowLocalPaths
+    }
   });
 });
 

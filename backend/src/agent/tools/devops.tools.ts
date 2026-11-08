@@ -6,6 +6,17 @@ import { currentScanResult, pendingActions, modifiedFiles } from './types';
 import { executePlaybookWorkflow } from '../../utils/playbook';
 import { getDevOpsInfo } from '../../routes/helpers';
 import { activeStreams } from '../agent';
+import { resolveInside } from '../../utils/security';
+
+// The agent may be steered by prompt injection from repository content / issues:
+// never let it write into VCS metadata or CI configuration.
+function assertWritableWorkspacePath(repoPath: string, fullPath: string) {
+  const rel = path.relative(repoPath, fullPath).replace(/\\/g, '/');
+  const segments = rel.split('/');
+  if (segments.includes('.git') || rel.startsWith('.github/workflows/') || rel === '.gitlab-ci.yml') {
+    throw new Error(`Writing to "${rel}" is not allowed.`);
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // resolve_issue_with_ai
@@ -70,8 +81,9 @@ export const resolveIssueWithAITool = new FunctionTool({
       `- Code review approved and MR merged.`,
     ].join('\n');
 
-    const filePath = `skills/fix_issue_${issueNumber}.md`;
-    const fullPath = path.join(currentScanResult.repoPath, filePath);
+    const safeIssue = String(issueNumber).replace(/[^A-Za-z0-9_-]/g, '_').substring(0, 40) || 'unknown';
+    const filePath = `skills/fix_issue_${safeIssue}.md`;
+    const fullPath = resolveInside(currentScanResult.repoPath, filePath);
     const parentDir = path.dirname(fullPath);
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true });
@@ -236,7 +248,12 @@ export const publishSkillToCatalogTool = new FunctionTool({
   execute: (async ({ skillFilePath, agentName, provider = 'gitlab', catalogUrl }: any) => {
     if (!currentScanResult) return 'No active repository. Please scan a connection first.';
 
-    const fullPath = path.join(currentScanResult.repoPath, skillFilePath);
+    let fullPath: string;
+    try {
+      fullPath = resolveInside(currentScanResult.repoPath, skillFilePath);
+    } catch (e: any) {
+      return e.message;
+    }
     if (!fs.existsSync(fullPath)) {
       return `Skill file not found at ${skillFilePath}. Please generate it first using 'resolve_issue_with_ai'.`;
     }
@@ -381,7 +398,8 @@ export const writeWorkspaceFileTool = new FunctionTool({
       return 'No active repository is scanned to write files to. Ask the user to scan a connection first.';
     }
     try {
-      const fullPath = path.join(currentScanResult.repoPath, filePath);
+      const fullPath = resolveInside(currentScanResult.repoPath, filePath);
+      assertWritableWorkspacePath(currentScanResult.repoPath, fullPath);
       const parentDir = path.dirname(fullPath);
       if (!fs.existsSync(parentDir)) {
         fs.mkdirSync(parentDir, { recursive: true });
@@ -416,7 +434,7 @@ export const readWorkspaceFileTool = new FunctionTool({
       return 'No active repository is scanned. Ask the user to scan a connection first.';
     }
     try {
-      const fullPath = path.join(currentScanResult.repoPath, filePath);
+      const fullPath = resolveInside(currentScanResult.repoPath, filePath);
       if (!fs.existsSync(fullPath)) {
         return `File not found at: ${filePath}`;
       }
@@ -446,7 +464,12 @@ export const executePlaybookWithGeminiTool = new FunctionTool({
     }
 
     const repoPath = currentScanResult.repoPath;
-    const fullPlaybookPath = path.join(repoPath, playbookFilePath);
+    let fullPlaybookPath: string;
+    try {
+      fullPlaybookPath = resolveInside(repoPath, playbookFilePath);
+    } catch (e: any) {
+      return e.message;
+    }
     if (!fs.existsSync(fullPlaybookPath)) {
       return `Playbook file not found at: ${playbookFilePath}`;
     }

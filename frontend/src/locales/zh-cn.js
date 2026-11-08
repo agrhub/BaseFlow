@@ -347,6 +347,7 @@ export default {
   "e.g. C:/Projects/MyProject  or  https://github.com/user/repo.git": "例如C:/Projects/MyProject 或 https://github.com/user/repo.git",
   "Repository Type": "存储库类型",
   "Local Folder": "本地文件夹",
+  "Local folders are disabled on this server. Ask an administrator to set ALLOWED_LOCAL_ROOTS.": "此服务器已禁用本地文件夹。请联系管理员设置 ALLOWED_LOCAL_ROOTS。",
   "Git Remote URL": "Git 远程 URL",
   "Default Branch": "默认分支",
   "e.g. main": "例如主要",

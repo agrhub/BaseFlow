@@ -347,6 +347,7 @@ export default {
   "e.g. C:/Projects/MyProject  or  https://github.com/user/repo.git": "por ej. C:/Projects/MyProject o https://github.com/user/repo.git",
   "Repository Type": "Tipo de repositorio",
   "Local Folder": "Carpeta local",
+  "Local folders are disabled on this server. Ask an administrator to set ALLOWED_LOCAL_ROOTS.": "Las carpetas locales están desactivadas en este servidor. Pide a un administrador que configure ALLOWED_LOCAL_ROOTS.",
   "Git Remote URL": "URL remota de Git",
   "Default Branch": "Rama predeterminada",
   "e.g. main": "por ej. principal",

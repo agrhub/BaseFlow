@@ -347,6 +347,7 @@ export default {
   "e.g. C:/Projects/MyProject  or  https://github.com/user/repo.git": "به عنوان مثال C:/Projects/MyProject یا https://github.com/user/repo.git",
   "Repository Type": "نوع مخزن",
   "Local Folder": "پوشه محلی",
+  "Local folders are disabled on this server. Ask an administrator to set ALLOWED_LOCAL_ROOTS.": "پوشه‌های محلی در این سرور غیرفعال هستند. از مدیر بخواهید ALLOWED_LOCAL_ROOTS را تنظیم کند.",
   "Git Remote URL": "Git Remote URL",
   "Default Branch": "شعبه پیش فرض",
   "e.g. main": "به عنوان مثال اصلی",
