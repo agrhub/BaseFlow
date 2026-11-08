@@ -86,7 +86,14 @@ export class GeminiService {
     const vertexai = process.env.GOOGLE_GENAI_USE_VERTEXAI === '1' || process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
     this.modelId = process.env.AGENT_MODEL || 'gemini-3.1-flash-lite';
 
-    this.genAI = new GoogleGenAI({ vertexai, apiKey });
+    // Only pass an API key when one is set: an empty string disables Application Default
+    // Credentials, which Vertex AI service accounts (GOOGLE_APPLICATION_CREDENTIALS) rely on.
+    this.genAI = new GoogleGenAI({
+      vertexai,
+      ...(apiKey ? { apiKey } : {}),
+      ...(vertexai && process.env.GOOGLE_CLOUD_PROJECT ? { project: process.env.GOOGLE_CLOUD_PROJECT } : {}),
+      ...(vertexai ? { location: process.env.GOOGLE_CLOUD_LOCATION || 'global' } : {})
+    });
     
     // Concurrency limit of 1 request at a time, with a minimum 1.5s interval to prevent rate limit spikes
     this.requestQueue = new RequestQueue(1, 1500);
